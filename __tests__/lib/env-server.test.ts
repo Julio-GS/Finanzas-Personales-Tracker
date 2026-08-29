@@ -2,8 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   validateDatabaseEnv,
   validateServerEnv,
-  databaseEnvSchema,
-  serverEnvSchema,
 } from '@/lib/env';
 
 describe('lib/env - Database & Server Env Validation', () => {
@@ -24,7 +22,7 @@ describe('lib/env - Database & Server Env Validation', () => {
     DATABASE_URL_UNPOOLED:
       'postgresql://user:pass@ep-sample.us-east-2.neon.tech/neondb?sslmode=require',
     GEMINI_API_KEY: 'mock-gemini-key',
-    GEMINI_MODEL: 'gemini-3.7-flash',
+    GEMINI_MODEL: 'gemini-3.5-flash-lite',
   };
 
   it('validates database environment with pooled and unpooled URLs', () => {
@@ -39,10 +37,12 @@ describe('lib/env - Database & Server Env Validation', () => {
       validateDatabaseEnv({ ...validDbEnv, DATABASE_URL_UNPOOLED: '' })
     ).toThrow();
 
-    const { DATABASE_URL, ...withoutPool } = validDbEnv;
+    const withoutPool = { ...validDbEnv };
+    delete (withoutPool as Record<string, unknown>).DATABASE_URL;
     expect(() => validateDatabaseEnv(withoutPool)).toThrow();
 
-    const { DATABASE_URL_UNPOOLED, ...withoutUnpool } = validDbEnv;
+    const withoutUnpool = { ...validDbEnv };
+    delete (withoutUnpool as Record<string, unknown>).DATABASE_URL_UNPOOLED;
     expect(() => validateDatabaseEnv(withoutUnpool)).toThrow();
   });
 
@@ -51,20 +51,22 @@ describe('lib/env - Database & Server Env Validation', () => {
     expect(result.AUTH_USERNAME).toBe('admin');
     expect(result.DATABASE_URL).toBe(validFullEnv.DATABASE_URL);
     expect(result.GEMINI_API_KEY).toBe('mock-gemini-key');
-    expect(result.GEMINI_MODEL).toBe('gemini-3.7-flash');
+    expect(result.GEMINI_MODEL).toBe('gemini-3.5-flash-lite');
   });
 
-  it('defaults GEMINI_MODEL to gemini-3.7-flash when omitted', () => {
-    const { GEMINI_MODEL, ...withoutModel } = validFullEnv;
+  it('defaults GEMINI_MODEL to gemini-3.5-flash-lite when omitted', () => {
+    const withoutModel = { ...validFullEnv };
+    delete (withoutModel as Record<string, unknown>).GEMINI_MODEL;
     const result = validateServerEnv(withoutModel);
-    expect(result.GEMINI_MODEL).toBe('gemini-3.7-flash');
+    expect(result.GEMINI_MODEL).toBe('gemini-3.5-flash-lite');
   });
 
   it('fails closed when GEMINI_API_KEY is missing or empty', () => {
     expect(() =>
       validateServerEnv({ ...validFullEnv, GEMINI_API_KEY: '' })
     ).toThrow();
-    const { GEMINI_API_KEY, ...withoutGemini } = validFullEnv;
+    const withoutGemini = { ...validFullEnv };
+    delete (withoutGemini as Record<string, unknown>).GEMINI_API_KEY;
     expect(() => validateServerEnv(withoutGemini)).toThrow();
   });
 });

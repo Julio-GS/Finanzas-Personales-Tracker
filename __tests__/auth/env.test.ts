@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { getAuthEnv, validateAuthEnv, authEnvSchema } from '@/lib/env';
+import { getAuthEnv, validateAuthEnv } from '@/lib/env';
 
 describe('lib/env - Auth Environment Validation', () => {
   const originalEnv = process.env;
@@ -39,20 +39,23 @@ describe('lib/env - Auth Environment Validation', () => {
 
   it('fails closed when AUTH_USERNAME is missing or empty', () => {
     expect(() => validateAuthEnv({ ...validEnv, AUTH_USERNAME: '' })).toThrow();
-    const { AUTH_USERNAME, ...withoutUsername } = validEnv;
+    const withoutUsername = { ...validEnv };
+    delete (withoutUsername as Record<string, unknown>).AUTH_USERNAME;
     expect(() => validateAuthEnv(withoutUsername)).toThrow();
   });
 
   it('fails closed when AUTH_PASSWORD is missing or empty', () => {
     expect(() => validateAuthEnv({ ...validEnv, AUTH_PASSWORD: '' })).toThrow();
-    const { AUTH_PASSWORD, ...withoutPassword } = validEnv;
+    const withoutPassword = { ...validEnv };
+    delete (withoutPassword as Record<string, unknown>).AUTH_PASSWORD;
     expect(() => validateAuthEnv(withoutPassword)).toThrow();
   });
 
   it('fails closed when AUTH_SECRET is missing or shorter than 32 characters', () => {
     expect(() => validateAuthEnv({ ...validEnv, AUTH_SECRET: 'too-short-secret' })).toThrow();
     expect(() => validateAuthEnv({ ...validEnv, AUTH_SECRET: '' })).toThrow();
-    const { AUTH_SECRET, ...withoutSecret } = validEnv;
+    const withoutSecret = { ...validEnv };
+    delete (withoutSecret as Record<string, unknown>).AUTH_SECRET;
     expect(() => validateAuthEnv(withoutSecret)).toThrow();
   });
 

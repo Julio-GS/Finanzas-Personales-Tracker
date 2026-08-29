@@ -43,7 +43,7 @@ export const serverEnvSchema = authEnvSchema.extend({
     .string()
     .min(1, 'DATABASE_URL_UNPOOLED is required and must not be empty'),
   GEMINI_API_KEY: z.string().min(1, 'GEMINI_API_KEY is required and must not be empty'),
-  GEMINI_MODEL: z.string().default('gemini-3.7-flash'),
+  GEMINI_MODEL: z.string().default('gemini-3.5-flash-lite'),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

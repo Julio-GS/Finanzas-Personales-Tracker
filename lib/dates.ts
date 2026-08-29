@@ -64,6 +64,26 @@ export function getMonthRange(year?: number, month?: number): MonthRange {
   };
 }
 
+const MONTH_NAMES = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+];
+
+export function getMonthName(month: number): string {
+  const idx = Math.max(1, Math.min(12, month)) - 1;
+  return MONTH_NAMES[idx] ?? 'Mes';
+}
+
 export function parseMonthQuery(
   year?: string | number,
   month?: string | number

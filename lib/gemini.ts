@@ -3,7 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import { formatIsoDate } from './dates';
 
 export const MAX_AUDIO_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5 MB conservative decoded limit
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.7-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 
 export class GeminiExtractionError extends Error {
   readonly code = 'extraction_failed' as const;
@@ -67,23 +67,6 @@ export interface ExtractedTransactionRaw {
   rawAudioPrompt?: string | null;
 }
 
-interface InteractionErrorDetail {
-  message?: string;
-}
-
-interface InteractionOutputItem {
-  type?: string;
-  text?: string;
-}
-
-interface InteractionResult {
-  id?: string;
-  status?: string;
-  output_text?: string;
-  outputs?: InteractionOutputItem[];
-  errors?: InteractionErrorDetail[];
-}
-
 const transactionResponseSchema = {
   type: 'object',
   properties: {
@@ -141,7 +124,7 @@ Current date context: ${currentDate}`;
 }
 
 /**
- * Extracts structured financial transaction data from base64 audio using Gemini Flash Interactions API.
+ * Extracts structured financial transaction data from base64 audio using Gemini generateContent API.
  * Server-only wrapper. Never persists raw audio.
  */
 export async function extractTransactionFromAudio(
@@ -158,28 +141,24 @@ export async function extractTransactionFromAudio(
 
   const ai = new GoogleGenAI({ apiKey });
 
-  let interaction: InteractionResult;
+  let response: { text?: string } | undefined;
   try {
-    const rawInteraction = await ai.interactions.create({
+    response = await ai.models.generateContent({
       model,
-      input: [
+      contents: [
+        buildPrompt(currentDate),
         {
-          type: 'text',
-          text: buildPrompt(currentDate),
-        },
-        {
-          type: 'audio',
-          data: input.audio,
-          mime_type: input.mimeType as string,
+          inlineData: {
+            data: input.audio,
+            mimeType: input.mimeType,
+          },
         },
       ],
-      response_format: {
-        type: 'text',
-        mime_type: 'application/json',
-        schema: transactionResponseSchema,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: transactionResponseSchema,
       },
     });
-    interaction = rawInteraction as InteractionResult;
   } catch (error: unknown) {
     if (error instanceof GeminiExtractionError || error instanceof GeminiProviderError) {
       throw error;
@@ -208,20 +187,7 @@ export async function extractTransactionFromAudio(
     throw new GeminiProviderError(`Voice processing failed: ${message}`);
   }
 
-  if (!interaction) {
-    throw new GeminiExtractionError('No response returned from Gemini interaction');
-  }
-
-  if (interaction.status === 'failed' || interaction.status === 'cancelled') {
-    const errorDetails = interaction.errors?.map((e) => e.message).filter(Boolean).join('; ') || 'Interaction failed';
-    throw new GeminiExtractionError(`Gemini interaction did not complete successfully: ${errorDetails}`);
-  }
-
-  let outputText: string | undefined = interaction.output_text;
-  if (!outputText && Array.isArray(interaction.outputs)) {
-    const textOutput = interaction.outputs.find((o) => o.type === 'text');
-    outputText = textOutput?.text;
-  }
+  const outputText = response?.text;
 
   if (!outputText || typeof outputText !== 'string' || outputText.trim().length === 0) {
     throw new GeminiExtractionError('Gemini returned an empty or silent extraction response');

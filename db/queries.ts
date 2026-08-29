@@ -200,17 +200,18 @@ export async function getHistoryReport(
 ): Promise<HistoryMonthItem[]> {
   const client = dbClient ?? getDb();
   const effectiveLimit = Math.max(1, Math.min(12, limit));
+  const monthExpr = sql<string>`to_char(${transactions.date}, 'YYYY-MM')`;
 
   const rows = await client
     .select({
-      monthKey: sql<string>`substring(${transactions.date}, 1, 7)`,
+      monthKey: monthExpr,
       income: sql<string>`coalesce(sum(case when ${transactions.type} = 'income' then ${transactions.amount} else 0 end), 0)::text`,
       expenses: sql<string>`coalesce(sum(case when ${transactions.type} = 'expense' then ${transactions.amount} else 0 end), 0)::text`,
       investments: sql<string>`coalesce(sum(case when ${transactions.type} = 'investment' then ${transactions.amount} else 0 end), 0)::text`,
     })
     .from(transactions)
-    .groupBy(sql`substring(${transactions.date}, 1, 7)`)
-    .orderBy(desc(sql`substring(${transactions.date}, 1, 7)`))
+    .groupBy(monthExpr)
+    .orderBy(desc(monthExpr))
     .limit(effectiveLimit);
 
   const result: HistoryMonthItem[] = rows

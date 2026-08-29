@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import HomePage from "@/app/page";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -8,14 +8,25 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 describe("Scaffold Smoke Test", () => {
-  it("renders the home page headline and description", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: async () => ({
+        month: { year: 2026, month: 8, start: "2026-08-01", endExclusive: "2026-09-01" },
+        kpis: { income: "0.00", expenses: "0.00", investments: "0.00", netFlow: "0.00" },
+        breakdowns: { byEntity: [], byCategory: [] }, transactions: [],
+      }),
+    }));
+  });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("renders the home page headline and description", async () => {
     render(<HomePage />);
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Finanzas Tracker" })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Voice-first personal finance & investment tracker")
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Finanzas Tracker" })).toBeInTheDocument();
+    expect(screen.getByText("Voice-first personal finance & investment tracker")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /cerrar sesión/i })).toBeInTheDocument();
+    });
   });
 
   it("renders shadcn UI primitives properly", () => {

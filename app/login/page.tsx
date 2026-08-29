@@ -10,7 +10,7 @@ import {
 
 export default function LoginPage(): React.JSX.Element {
   return (
-    <main className="flex min-h-screen items-center justify-center p-4 bg-muted/30">
+    <main className="flex min-h-screen items-center justify-center p-4 bg-background pt-safe">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="space-y-1 text-center">
           <CardTitle className="text-2xl font-bold tracking-tight">

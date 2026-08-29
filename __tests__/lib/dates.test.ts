@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getMonthRange, isValidIsoDate, formatIsoDate, parseMonthQuery } from '@/lib/dates';
+import { getMonthRange, isValidIsoDate, formatIsoDate, parseMonthQuery, getMonthName } from '@/lib/dates';
 
 describe('Date Helpers', () => {
   describe('getMonthRange', () => {
@@ -87,6 +87,16 @@ describe('Date Helpers', () => {
         year: currentYear,
         month: currentMonth,
       });
+    });
+  });
+
+  describe('getMonthName', () => {
+    it('returns correct Spanish month names and clamps safely', () => {
+      expect(getMonthName(1)).toBe('Enero');
+      expect(getMonthName(8)).toBe('Agosto');
+      expect(getMonthName(12)).toBe('Diciembre');
+      expect(getMonthName(0)).toBe('Enero');
+      expect(getMonthName(13)).toBe('Diciembre');
     });
   });
 });

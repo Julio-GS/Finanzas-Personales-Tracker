@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { drizzle } from 'drizzle-orm/neon-http';
+import * as schema from '@/db/schema';
 import {
   insertTransaction,
   getMonthDashboard,
@@ -455,6 +457,64 @@ describe('Database Queries (db/queries.ts)', () => {
 
       const result = await getHistoryReport(6, mockDb as any);
       expect(result).toEqual([]);
+    });
+
+    it('generates PostgreSQL-valid date grouping SQL without invalid substring on date column', async () => {
+      const executedQueries: { query: string; params: unknown[] }[] = [];
+      const mockNeon = vi.fn(async (query: string, params: unknown[]) => {
+        executedQueries.push({ query, params });
+        return { rows: [] };
+      });
+      const realDrizzleDb = drizzle(mockNeon as any, { schema });
+
+      const result = await getHistoryReport(6, realDrizzleDb as any);
+
+      // Verify execution succeeded and mapped empty rows to []
+      expect(result).toEqual([]);
+      expect(executedQueries.length).toBe(1);
+
+      const sqlText = executedQueries[0].query;
+      // Must NOT use substring (invalid on PostgreSQL date column)
+      expect(sqlText).not.toMatch(/substring\s*\(/i);
+      // Must use valid PostgreSQL date grouping expression (e.g. to_char on date column)
+      expect(sqlText).toMatch(/to_char\s*\(\s*(?:"transactions"\.)?"date"\s*,\s*'YYYY-MM'\s*\)/i);
+    });
+
+    it('processes real Drizzle query result rows and correctly formats history KPIs', async () => {
+      // Drizzle neon-http in arrayMode expects array rows in field order:
+      // [monthKey, income, expenses, investments]
+      const mockDbRows = [
+        ['2026-08', '150000.00', '45000.00', '25000.00'],
+        ['2026-07', '120000.00', '40000.00', '10000.00'],
+      ];
+
+      const executedQueries: { query: string; params: unknown[] }[] = [];
+      const mockNeon = vi.fn(async (query: string, params: unknown[]) => {
+        executedQueries.push({ query, params });
+        return { rows: mockDbRows };
+      });
+      const realDrizzleDb = drizzle(mockNeon as any, { schema });
+
+      const result = await getHistoryReport(6, realDrizzleDb as any);
+
+      expect(result).toEqual([
+        {
+          year: 2026,
+          month: 7,
+          income: '120000.00',
+          expenses: '40000.00',
+          investments: '10000.00',
+          netFlow: '70000.00',
+        },
+        {
+          year: 2026,
+          month: 8,
+          income: '150000.00',
+          expenses: '45000.00',
+          investments: '25000.00',
+          netFlow: '80000.00',
+        },
+      ]);
     });
 
     it('clamps limit between 1 and 12', async () => {

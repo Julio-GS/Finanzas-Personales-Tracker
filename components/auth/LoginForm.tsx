@@ -49,7 +49,7 @@ export function LoginForm(): React.JSX.Element {
         <div
           role="alert"
           aria-live="polite"
-          className="rounded-md bg-destructive/15 p-3 text-sm text-destructive font-medium border border-destructive/20"
+          className="rounded-xl bg-destructive/15 p-3 text-sm text-destructive font-medium border border-destructive/25"
         >
           {error}
         </div>
@@ -85,7 +85,7 @@ export function LoginForm(): React.JSX.Element {
         />
       </div>
 
-      <Button type="submit" className="w-full" disabled={isLoading}>
+      <Button type="submit" className="w-full min-h-[44px]" disabled={isLoading}>
         {isLoading ? 'Ingresando...' : 'Iniciar sesión'}
       </Button>
     </form>

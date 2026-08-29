@@ -8,7 +8,7 @@ const idParamSchema = z.string().uuid('Invalid transaction ID format');
 
 export async function DELETE(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> | { id: string } }
+  context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const auth = await validateRequestAuth(request);
   if (!auth.authenticated) {
