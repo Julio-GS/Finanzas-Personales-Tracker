@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ManualTransactionForm } from '@/components/transactions/ManualTransactionForm';
+import {
+  ManualTransactionForm,
+  formatCurrencyInput,
+  parseCurrencyToNumber,
+} from '@/components/transactions/ManualTransactionForm';
 
 describe('ManualTransactionForm', () => {
   beforeEach(() => { vi.restoreAllMocks(); });
@@ -10,7 +14,12 @@ describe('ManualTransactionForm', () => {
   it('renders all form fields with accessible labels and defaults, with a select for the 4 fixed accounts', () => {
     render(<ManualTransactionForm />);
     expect(screen.getByLabelText(/tipo/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/monto/i)).toBeInTheDocument();
+    
+    const amountInput = screen.getByLabelText(/monto/i);
+    expect(amountInput).toBeInTheDocument();
+    expect(amountInput).toHaveAttribute('type', 'text');
+    expect(amountInput).toHaveAttribute('inputMode', 'decimal');
+    expect(amountInput).toHaveAttribute('placeholder', '$ 0,00');
 
     const accountSelect = screen.getByLabelText(/entidad \/ cuenta/i);
     expect(accountSelect).toBeInTheDocument();
@@ -51,7 +60,7 @@ describe('ManualTransactionForm', () => {
     const parsed = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(parsed.amount).toBe(1500.5); expect(parsed.bankEntity).toBe('Mercado Pago'); expect(parsed.category).toBe('Supermercado');
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
-    expect(screen.getByLabelText(/monto/i)).toHaveValue(null);
+    expect(screen.getByLabelText(/monto/i)).toHaveValue('');
     expect(screen.getByLabelText(/entidad \/ cuenta/i)).toHaveValue('');
   });
 
@@ -97,7 +106,7 @@ describe('ManualTransactionForm', () => {
     await user.click(screen.getByRole('button', { name: /guardar|registrar/i }));
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/inválidos/i));
     expect(onSuccess).not.toHaveBeenCalled();
-    expect(screen.getByLabelText(/monto/i)).toHaveValue(500);
+    expect(screen.getByLabelText(/monto/i)).toHaveValue('$ 500');
   });
 
   it('redirects to /login when receiving 401 unauthorized', async () => {
@@ -219,6 +228,143 @@ describe('ManualTransactionForm', () => {
 
       expect(screen.getByRole('alert')).toHaveTextContent(/destino.*requerida/i);
       expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Currency Amount Input & Argentine Formatting', () => {
+    it('formats amount in real-time with Argentine currency conventions ($ and thousands dots)', async () => {
+      const user = userEvent.setup();
+      render(<ManualTransactionForm />);
+      const amountInput = screen.getByLabelText(/monto/i);
+
+      await user.type(amountInput, '1234567');
+      expect(amountInput).toHaveValue('$ 1.234.567');
+    });
+
+    it('handles decimal entry with period and comma up to two decimals', async () => {
+      const user = userEvent.setup();
+      render(<ManualTransactionForm />);
+      const amountInput = screen.getByLabelText(/monto/i);
+
+      await user.type(amountInput, '1500.50');
+      expect(amountInput).toHaveValue('$ 1.500,50');
+
+      await user.clear(amountInput);
+      expect(amountInput).toHaveValue('');
+
+      await user.type(amountInput, '2500,75');
+      expect(amountInput).toHaveValue('$ 2.500,75');
+    });
+
+    it('handles typing cents directly starting with separator', async () => {
+      const user = userEvent.setup();
+      render(<ManualTransactionForm />);
+      const amountInput = screen.getByLabelText(/monto/i);
+
+      await user.type(amountInput, '.50');
+      expect(amountInput).toHaveValue('$ 0,50');
+    });
+
+    it('limits decimal places to 2 when extra digits are typed', async () => {
+      const user = userEvent.setup();
+      render(<ManualTransactionForm />);
+      const amountInput = screen.getByLabelText(/monto/i);
+
+      await user.type(amountInput, '99.999');
+      expect(amountInput).toHaveValue('$ 99,99');
+    });
+
+    it('predictably handles backspacing and clearing characters', async () => {
+      const user = userEvent.setup();
+      render(<ManualTransactionForm />);
+      const amountInput = screen.getByLabelText(/monto/i);
+
+      await user.type(amountInput, '1500.50');
+      expect(amountInput).toHaveValue('$ 1.500,50');
+
+      await user.type(amountInput, '{backspace}');
+      expect(amountInput).toHaveValue('$ 1.500,5');
+
+      await user.type(amountInput, '{backspace}');
+      expect(amountInput).toHaveValue('$ 1.500,');
+
+      await user.type(amountInput, '{backspace}');
+      expect(amountInput).toHaveValue('$ 1.500');
+
+      await user.type(amountInput, '{backspace}');
+      expect(amountInput).toHaveValue('$ 150');
+
+      await user.clear(amountInput);
+      expect(amountInput).toHaveValue('');
+    });
+
+    it('rejects zero or empty amount on submission with accessible alert', async () => {
+      const user = userEvent.setup();
+      const fetchMock = vi.fn();
+      global.fetch = fetchMock;
+
+      render(<ManualTransactionForm />);
+      const amountInput = screen.getByLabelText(/monto/i);
+      await user.type(amountInput, '0');
+      await user.selectOptions(screen.getByLabelText(/entidad \/ cuenta/i), 'Mercado Pago');
+      await user.type(screen.getByLabelText(/^categor[ií]a$/i), 'Test');
+      await user.click(screen.getByRole('button', { name: /guardar|registrar/i }));
+
+      expect(screen.getByRole('alert')).toHaveTextContent(/monto válido mayor a 0/i);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('submits income and investment transaction types with exact numeric payload', async () => {
+      const user = userEvent.setup();
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 201,
+        json: async () => ({ transaction: { id: 'tx-inv-1' } }),
+      });
+      global.fetch = fetchMock;
+
+      render(<ManualTransactionForm defaultType="investment" />);
+      const amountInput = screen.getByLabelText(/monto/i);
+      await user.type(amountInput, '75000.25');
+      await user.selectOptions(screen.getByLabelText(/entidad \/ cuenta/i), 'Naranja X');
+      await user.type(screen.getByLabelText(/^categor[ií]a$/i), 'FCI');
+      await user.click(screen.getByRole('button', { name: /guardar|registrar/i }));
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          '/api/transactions',
+          expect.objectContaining({
+            method: 'POST',
+            body: expect.stringContaining('"amount":75000.25'),
+          })
+        );
+      });
+      const parsed = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(parsed.type).toBe('investment');
+      expect(parsed.amount).toBe(75000.25);
+    });
+  });
+
+  describe('formatCurrencyInput and parseCurrencyToNumber helpers', () => {
+    it('formats numbers and handles leading zeros properly', () => {
+      expect(formatCurrencyInput('007')).toBe('$ 7');
+      expect(formatCurrencyInput('0')).toBe('$ 0');
+      expect(formatCurrencyInput('0,')).toBe('$ 0,');
+      expect(formatCurrencyInput('0,05')).toBe('$ 0,05');
+      expect(formatCurrencyInput('10000000.99')).toBe('$ 10.000.000,99');
+      expect(formatCurrencyInput('')).toBe('');
+      expect(formatCurrencyInput('   ')).toBe('');
+      expect(formatCurrencyInput('$')).toBe('');
+    });
+
+    it('parses formatted currency strings back to numeric floats', () => {
+      expect(parseCurrencyToNumber('$ 1.500,50')).toBe(1500.5);
+      expect(parseCurrencyToNumber('$ 10.000.000,99')).toBe(10000000.99);
+      expect(parseCurrencyToNumber('$ 0,05')).toBe(0.05);
+      expect(parseCurrencyToNumber('$ 0')).toBe(0);
+      expect(parseCurrencyToNumber('-$ 50')).toBe(-50);
+      expect(parseCurrencyToNumber('')).toBeNaN();
+      expect(parseCurrencyToNumber('$')).toBeNaN();
     });
   });
 });

@@ -15,6 +15,67 @@ export interface ManualTransactionFormProps {
   defaultType?: MovementType;
 }
 
+function formatIntegerDigits(digits: string): string {
+  if (!digits) return '';
+  const trimmed = digits.replace(/^0+(?=\d)/, '');
+  return trimmed.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+export function formatCurrencyInput(value: string): string {
+  if (!value || !value.trim()) return '';
+
+  const isNegative = value.trim().startsWith('-');
+  const clean = value.replace(/[$]/g, '').trim().replace(/^-/, '');
+  if (!clean) return isNegative ? '-$ ' : '';
+
+  const prefix = isNegative ? '-$ ' : '$ ';
+
+  if (clean.includes(',')) {
+    const parts = clean.split(',');
+    const integerDigits = parts[0].replace(/\D/g, '');
+    const decimalDigits = parts.slice(1).join('').replace(/\D/g, '').slice(0, 2);
+    const formattedInt = formatIntegerDigits(integerDigits) || '0';
+    return `${prefix}${formattedInt},${decimalDigits}`;
+  }
+
+  if (clean.endsWith('.')) {
+    const integerDigits = clean.slice(0, -1).replace(/\D/g, '');
+    const formattedInt = formatIntegerDigits(integerDigits) || '0';
+    return `${prefix}${formattedInt},`;
+  }
+
+  if (!value.includes('$')) {
+    const dotParts = clean.split('.');
+    if (dotParts.length === 2 && (dotParts[1].length === 1 || dotParts[1].length === 2)) {
+      const integerDigits = dotParts[0].replace(/\D/g, '');
+      const decimalDigits = dotParts[1].replace(/\D/g, '').slice(0, 2);
+      const formattedInt = formatIntegerDigits(integerDigits) || '0';
+      return `${prefix}${formattedInt},${decimalDigits}`;
+    }
+  }
+
+  const allDigits = clean.replace(/\D/g, '');
+  if (!allDigits) return '';
+  const formattedInt = formatIntegerDigits(allDigits);
+  if (!formattedInt) return '';
+  return `${prefix}${formattedInt}`;
+}
+
+export function parseCurrencyToNumber(value: string): number {
+  if (!value || !value.trim()) return NaN;
+  const isNegative = value.trim().startsWith('-');
+  const clean = value
+    .replace(/[$]/g, '')
+    .trim()
+    .replace(/^-/, '')
+    .replace(/\./g, '')
+    .replace(',', '.');
+  if (!clean || clean === '.') return NaN;
+  const num = Number.parseFloat(clean);
+  if (!Number.isFinite(num)) return NaN;
+  return isNegative ? -num : num;
+}
+
 export function ManualTransactionForm({
   onSuccess,
   defaultType = 'expense',
@@ -44,7 +105,7 @@ export function ManualTransactionForm({
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
-    const parsedAmount = Number.parseFloat(amount);
+    const parsedAmount = parseCurrencyToNumber(amount);
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       setErrorMessage('Ingrese un monto válido mayor a 0');
       return;
@@ -182,13 +243,13 @@ export function ManualTransactionForm({
               <Input
                 id="tx-amount"
                 name="amount"
-                type="number"
-                step="0.01"
-                min="0.01"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 required
-                placeholder="0.00"
+                placeholder="$ 0,00"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => setAmount(formatCurrencyInput(e.target.value))}
                 disabled={isLoading}
               />
             </div>

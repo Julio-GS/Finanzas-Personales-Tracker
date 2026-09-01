@@ -42,7 +42,12 @@ describe('Accessibility Audit & Assertions across MVP Surfaces', () => {
   it('ManualTransactionForm: associates labels with all interactive inputs and selects', () => {
     render(<ManualTransactionForm />);
     expect(screen.getByLabelText(/tipo de movimiento/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/monto/i)).toBeInTheDocument();
+    
+    const amountInput = screen.getByLabelText(/monto/i);
+    expect(amountInput).toBeInTheDocument();
+    expect(amountInput).toHaveAttribute('inputMode', 'decimal');
+    expect(amountInput).toHaveAttribute('type', 'text');
+
     expect(screen.getByLabelText(/entidad \/ cuenta/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/categoría/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/fecha/i)).toBeInTheDocument();
