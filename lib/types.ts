@@ -1,4 +1,4 @@
-export type MovementType = 'income' | 'expense' | 'investment';
+export type MovementType = 'income' | 'expense' | 'investment' | 'transfer';
 
 export interface TransactionItem {
   id: string;
@@ -7,6 +7,7 @@ export interface TransactionItem {
   type: MovementType;
   amount: string;
   bankEntity: string;
+  destinationBankEntity?: string | null;
   category: string;
   description: string | null;
   rawAudioPrompt: string | null;

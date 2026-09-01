@@ -15,10 +15,14 @@ export interface ManualTransactionFormProps {
   defaultType?: MovementType;
 }
 
-export function ManualTransactionForm({ onSuccess, defaultType = 'expense' }: ManualTransactionFormProps): React.JSX.Element {
+export function ManualTransactionForm({
+  onSuccess,
+  defaultType = 'expense',
+}: ManualTransactionFormProps): React.JSX.Element {
   const [type, setType] = useState<MovementType>(defaultType);
   const [amount, setAmount] = useState<string>('');
   const [bankEntity, setBankEntity] = useState<string>('');
+  const [destinationBankEntity, setDestinationBankEntity] = useState<string>('');
   const [category, setCategory] = useState<string>('');
   const [date, setDate] = useState<string>(formatIsoDate(new Date()));
   const [description, setDescription] = useState<string>('');
@@ -27,30 +31,98 @@ export function ManualTransactionForm({ onSuccess, defaultType = 'expense' }: Ma
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const resetForm = () => {
-    setType(defaultType); setAmount(''); setBankEntity(''); setCategory(''); setDate(formatIsoDate(new Date())); setDescription('');
+    setType(defaultType);
+    setAmount('');
+    setBankEntity('');
+    setDestinationBankEntity('');
+    setCategory('');
+    setDate(formatIsoDate(new Date()));
+    setDescription('');
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setErrorMessage(null); setSuccessMessage(null);
+    setErrorMessage(null);
+    setSuccessMessage(null);
     const parsedAmount = Number.parseFloat(amount);
-    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) { setErrorMessage('Ingrese un monto válido mayor a 0'); return; }
-    if (!bankEntity.trim()) { setErrorMessage('La entidad o cuenta es requerida'); return; }
-    if (!category.trim()) { setErrorMessage('La categoría es requerida'); return; }
-    if (!date) { setErrorMessage('La fecha es requerida'); return; }
-    setIsLoading(true);
-    try {
-      const res = await fetch('/api/transactions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, amount: parsedAmount, bankEntity: bankEntity.trim(), category: category.trim(), date, description: description.trim() || undefined }),
-      });
-      if (res.status === 401) { window.location.href = '/login'; return; }
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        setErrorMessage(data?.error?.message ?? 'Error al registrar la transacción. Intente nuevamente.');
+    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+      setErrorMessage('Ingrese un monto válido mayor a 0');
+      return;
+    }
+
+    if (type === 'transfer') {
+      if (!bankEntity.trim()) {
+        setErrorMessage('La cuenta de origen es requerida');
         return;
       }
-      resetForm(); setSuccessMessage('Transacción registrada correctamente');
+      if (!destinationBankEntity.trim()) {
+        setErrorMessage('La cuenta de destino es requerida');
+        return;
+      }
+      if (bankEntity.trim() === destinationBankEntity.trim()) {
+        setErrorMessage('La cuenta de origen y destino deben ser distintas');
+        return;
+      }
+    } else {
+      if (!bankEntity.trim()) {
+        setErrorMessage('La entidad o cuenta es requerida');
+        return;
+      }
+      if (!category.trim()) {
+        setErrorMessage('La categoría es requerida');
+        return;
+      }
+    }
+
+    if (!date) {
+      setErrorMessage('La fecha es requerida');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const payload =
+        type === 'transfer'
+          ? {
+              type,
+              amount: parsedAmount,
+              bankEntity: bankEntity.trim(),
+              destinationBankEntity: destinationBankEntity.trim(),
+              category: 'Transferencia',
+              date,
+              description: description.trim() || undefined,
+            }
+          : {
+              type,
+              amount: parsedAmount,
+              bankEntity: bankEntity.trim(),
+              category: category.trim(),
+              date,
+              description: description.trim() || undefined,
+            };
+
+      const res = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.status === 401) {
+        window.location.href = '/login';
+        return;
+      }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setErrorMessage(
+          data?.error?.message ??
+            'Error al registrar la transacción. Intente nuevamente.'
+        );
+        return;
+      }
+
+      resetForm();
+      setSuccessMessage('Transacción registrada correctamente');
       if (onSuccess) await onSuccess();
     } catch {
       setErrorMessage('Error de conexión al guardar la transacción.');
@@ -69,13 +141,23 @@ export function ManualTransactionForm({ onSuccess, defaultType = 'expense' }: Ma
       <CardContent className="pb-4">
         <form noValidate onSubmit={handleSubmit} className="space-y-4">
           {errorMessage && (
-            <div role="alert" aria-live="polite" className="flex items-center gap-2 rounded-xl bg-destructive/15 p-3 text-sm text-destructive font-medium border border-destructive/25">
-              <AlertCircle className="h-4 w-4 shrink-0" /><span>{errorMessage}</span>
+            <div
+              role="alert"
+              aria-live="polite"
+              className="flex items-center gap-2 rounded-xl bg-destructive/15 p-3 text-sm text-destructive font-medium border border-destructive/25"
+            >
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{errorMessage}</span>
             </div>
           )}
           {successMessage && (
-            <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-xl bg-success/15 p-3 text-sm text-success font-medium border border-success/25">
-              <CheckCircle2 className="h-4 w-4 shrink-0" /><span>{successMessage}</span>
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center gap-2 rounded-xl bg-success/15 p-3 text-sm text-success font-medium border border-success/25"
+            >
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>{successMessage}</span>
             </div>
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -92,16 +174,30 @@ export function ManualTransactionForm({ onSuccess, defaultType = 'expense' }: Ma
                 <option value="expense">Gasto</option>
                 <option value="income">Ingreso</option>
                 <option value="investment">Inversión</option>
+                <option value="transfer">Transferencia</option>
               </select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="tx-amount">Monto</Label>
-              <Input id="tx-amount" name="amount" type="number" step="0.01" min="0.01" required placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={isLoading} />
+              <Input
+                id="tx-amount"
+                name="amount"
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                disabled={isLoading}
+              />
             </div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="tx-bank-entity">Entidad / Cuenta</Label>
+              <Label htmlFor="tx-bank-entity">
+                {type === 'transfer' ? 'Cuenta de origen' : 'Entidad / Cuenta'}
+              </Label>
               <select
                 id="tx-bank-entity"
                 name="bankEntity"
@@ -111,7 +207,11 @@ export function ManualTransactionForm({ onSuccess, defaultType = 'expense' }: Ma
                 disabled={isLoading}
                 className="flex h-11 w-full rounded-xl border border-input/60 bg-secondary/40 px-3.5 py-2 text-base text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
               >
-                <option value="">Seleccione una entidad / cuenta</option>
+                <option value="">
+                  {type === 'transfer'
+                    ? 'Seleccione cuenta de origen'
+                    : 'Seleccione una entidad / cuenta'}
+                </option>
                 {ALLOWED_ACCOUNTS.map((acc) => (
                   <option key={acc} value={acc}>
                     {acc}
@@ -119,23 +219,80 @@ export function ManualTransactionForm({ onSuccess, defaultType = 'expense' }: Ma
                 ))}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="tx-category">Categoría</Label>
-              <Input id="tx-category" name="category" type="text" required placeholder="Ej. Supermercado, Alquiler, Salidas" value={category} onChange={(e) => setCategory(e.target.value)} disabled={isLoading} />
-            </div>
+            {type === 'transfer' ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="tx-dest-bank-entity">Cuenta de destino</Label>
+                <select
+                  id="tx-dest-bank-entity"
+                  name="destinationBankEntity"
+                  required
+                  value={destinationBankEntity}
+                  onChange={(e) => setDestinationBankEntity(e.target.value)}
+                  disabled={isLoading}
+                  className="flex h-11 w-full rounded-xl border border-input/60 bg-secondary/40 px-3.5 py-2 text-base text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                >
+                  <option value="">Seleccione cuenta de destino</option>
+                  {ALLOWED_ACCOUNTS.map((acc) => (
+                    <option key={acc} value={acc}>
+                      {acc}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="tx-category">Categoría</Label>
+                <Input
+                  id="tx-category"
+                  name="category"
+                  type="text"
+                  required
+                  placeholder="Ej. Supermercado, Alquiler, Salidas"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="tx-date">Fecha</Label>
-              <Input id="tx-date" name="date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} disabled={isLoading} />
+              <Input
+                id="tx-date"
+                name="date"
+                type="date"
+                required
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                disabled={isLoading}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="tx-description">Descripción (opcional)</Label>
-              <Input id="tx-description" name="description" type="text" placeholder="Detalle o nota adicional" value={description} onChange={(e) => setDescription(e.target.value)} disabled={isLoading} />
+              <Input
+                id="tx-description"
+                name="description"
+                type="text"
+                placeholder="Detalle o nota adicional"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                disabled={isLoading}
+              />
             </div>
           </div>
-          <Button type="submit" className="w-full sm:w-auto min-h-[44px]" disabled={isLoading}>
-            {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Guardando...</> : 'Guardar transacción'}
+          <Button
+            type="submit"
+            className="w-full sm:w-auto min-h-[44px]"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Guardando...
+              </>
+            ) : (
+              'Guardar transacción'
+            )}
           </Button>
         </form>
       </CardContent>

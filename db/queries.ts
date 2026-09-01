@@ -45,9 +45,10 @@ export interface HistoryMonthItem {
 }
 
 export interface InsertTransactionInput {
-  type: 'income' | 'expense' | 'investment';
+  type: 'income' | 'expense' | 'investment' | 'transfer';
   amount: string | number;
   bankEntity: string;
+  destinationBankEntity?: string | null;
   category: string;
   date: string;
   description?: string | null;
@@ -65,6 +66,10 @@ export async function insertTransaction(
   const normalizedAmount = normalizeDecimalString(data.amount);
   const trimmedBankEntity = data.bankEntity.trim();
   const trimmedCategory = data.category.trim();
+  const normalizedDestBankEntity =
+    data.destinationBankEntity && data.destinationBankEntity.trim().length > 0
+      ? data.destinationBankEntity.trim()
+      : null;
   const normalizedDescription =
     data.description && data.description.trim().length > 0
       ? data.description.trim()
@@ -80,6 +85,7 @@ export async function insertTransaction(
       type: data.type,
       amount: normalizedAmount,
       bankEntity: trimmedBankEntity,
+      destinationBankEntity: normalizedDestBankEntity,
       category: trimmedCategory,
       date: data.date,
       description: normalizedDescription,
@@ -115,12 +121,24 @@ export async function getMonthDashboard(
 
   const accountMap = new Map<
     string,
-    { income: number; expenses: number; investments: number }
+    {
+      income: number;
+      expenses: number;
+      investments: number;
+      transfersIn: number;
+      transfersOut: number;
+    }
   >();
 
   // Always initialize the 4 fixed accounts
   for (const account of ALLOWED_ACCOUNTS) {
-    accountMap.set(account, { income: 0, expenses: 0, investments: 0 });
+    accountMap.set(account, {
+      income: 0,
+      expenses: 0,
+      investments: 0,
+      transfersIn: 0,
+      transfersOut: 0,
+    });
   }
 
   const categoryMap = new Map<string, number>();
@@ -137,7 +155,13 @@ export async function getMonthDashboard(
 
     let stats = accountMap.get(tx.bankEntity);
     if (!stats) {
-      stats = { income: 0, expenses: 0, investments: 0 };
+      stats = {
+        income: 0,
+        expenses: 0,
+        investments: 0,
+        transfersIn: 0,
+        transfersOut: 0,
+      };
       accountMap.set(tx.bankEntity, stats);
     }
 
@@ -147,6 +171,22 @@ export async function getMonthDashboard(
       stats.expenses += amt;
     } else if (tx.type === 'investment') {
       stats.investments += amt;
+    } else if (tx.type === 'transfer') {
+      stats.transfersOut += amt;
+      if (tx.destinationBankEntity) {
+        let destStats = accountMap.get(tx.destinationBankEntity);
+        if (!destStats) {
+          destStats = {
+            income: 0,
+            expenses: 0,
+            investments: 0,
+            transfersIn: 0,
+            transfersOut: 0,
+          };
+          accountMap.set(tx.destinationBankEntity, destStats);
+        }
+        destStats.transfersIn += amt;
+      }
     }
 
     categoryMap.set(tx.category, (categoryMap.get(tx.category) || 0) + amt);
@@ -158,8 +198,17 @@ export async function getMonthDashboard(
 
   const byEntity: AccountBreakdownItem[] = Array.from(accountMap.entries())
     .map(([account, stats]) => {
-      const net = stats.income - stats.expenses - stats.investments;
-      const totalActivity = stats.income + stats.expenses + stats.investments;
+      const net =
+        stats.income -
+        stats.expenses -
+        stats.investments +
+        (stats.transfersIn - stats.transfersOut);
+      const totalActivity =
+        stats.income +
+        stats.expenses +
+        stats.investments +
+        stats.transfersIn +
+        stats.transfersOut;
       return {
         account,
         label: account,

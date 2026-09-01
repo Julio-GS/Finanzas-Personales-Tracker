@@ -2,9 +2,22 @@ import { z } from 'zod';
 import { isValidIsoDate, formatIsoDate } from './dates';
 import { accountOptionSchema } from './accounts';
 
-export const MOVEMENT_TYPES = ['income', 'expense', 'investment'] as const;
+export const MOVEMENT_TYPES = [
+  'income',
+  'expense',
+  'investment',
+  'transfer',
+] as const;
 export const movementTypeSchema = z.enum(MOVEMENT_TYPES);
 export type MovementType = z.infer<typeof movementTypeSchema>;
+
+export const VOICE_MOVEMENT_TYPES = [
+  'income',
+  'expense',
+  'investment',
+] as const;
+export const voiceMovementTypeSchema = z.enum(VOICE_MOVEMENT_TYPES);
+export type VoiceMovementType = z.infer<typeof voiceMovementTypeSchema>;
 
 export const ALLOWED_AUDIO_MIME_TYPES = [
   'audio/webm',
@@ -34,19 +47,63 @@ const amountSchema = z
     return num.toFixed(2);
   });
 
-export const manualTransactionInputSchema = z.object({
-  type: movementTypeSchema,
-  amount: amountSchema,
-  bankEntity: accountOptionSchema,
-  category: z.string().trim().min(1, 'Category is required and must not be empty'),
-  date: z.string().refine(isValidIsoDate, {
-    message: 'Date must be a valid YYYY-MM-DD string',
-  }),
-  description: z
-    .string()
-    .nullish()
-    .transform((val) => (val && val.trim().length > 0 ? val.trim() : null)),
-});
+export const manualTransactionInputSchema = z
+  .object({
+    type: movementTypeSchema,
+    amount: amountSchema,
+    bankEntity: accountOptionSchema,
+    destinationBankEntity: accountOptionSchema.nullish(),
+    category: z.string().trim().optional(),
+    date: z.string().refine(isValidIsoDate, {
+      message: 'Date must be a valid YYYY-MM-DD string',
+    }),
+    description: z
+      .string()
+      .nullish()
+      .transform((val) => (val && val.trim().length > 0 ? val.trim() : null)),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === 'transfer') {
+      if (!data.destinationBankEntity) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Destination account is required for transfers',
+          path: ['destinationBankEntity'],
+        });
+      } else if (data.destinationBankEntity === data.bankEntity) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Source and destination accounts must be different',
+          path: ['destinationBankEntity'],
+        });
+      }
+    } else {
+      if (!data.category || data.category.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Category is required and must not be empty',
+          path: ['category'],
+        });
+      }
+    }
+  })
+  .transform((data) => {
+    if (data.type === 'transfer') {
+      return {
+        ...data,
+        category:
+          data.category && data.category.trim().length > 0
+            ? data.category.trim()
+            : 'Transferencia',
+        destinationBankEntity: data.destinationBankEntity ?? null,
+      };
+    }
+    return {
+      ...data,
+      category: data.category!.trim(),
+      destinationBankEntity: null,
+    };
+  });
 
 export type ManualTransactionInput = z.infer<typeof manualTransactionInputSchema>;
 
@@ -58,7 +115,7 @@ export const audioTransactionInputSchema = z.object({
 export type AudioTransactionInput = z.infer<typeof audioTransactionInputSchema>;
 
 export const geminiExtractedTransactionSchema = z.object({
-  type: movementTypeSchema,
+  type: voiceMovementTypeSchema,
   amount: amountSchema,
   bankEntity: z
     .string()

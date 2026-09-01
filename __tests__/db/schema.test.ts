@@ -9,7 +9,12 @@ describe('Database Schema: Transactions', () => {
 
   it('defines movement_type enum with income, expense, investment values', () => {
     expect(schema.movementTypeEnum).toBeDefined();
-    expect(schema.movementTypeEnum.enumValues).toEqual(['income', 'expense', 'investment']);
+    expect(schema.movementTypeEnum.enumValues).toEqual([
+      'income',
+      'expense',
+      'investment',
+      'transfer',
+    ]);
   });
 
   it('defines required transaction columns with correct constraints', () => {
@@ -20,6 +25,7 @@ describe('Database Schema: Transactions', () => {
     expect(table.type).toBeDefined();
     expect(table.amount).toBeDefined();
     expect(table.bankEntity).toBeDefined();
+    expect(table.destinationBankEntity).toBeDefined();
     expect(table.category).toBeDefined();
     expect(table.description).toBeDefined();
     expect(table.rawAudioPrompt).toBeDefined();
@@ -31,6 +37,7 @@ describe('Database Schema: Transactions', () => {
     expect(table.type.name).toBe('type');
     expect(table.amount.name).toBe('amount');
     expect(table.bankEntity.name).toBe('bank_entity');
+    expect(table.destinationBankEntity.name).toBe('destination_bank_entity');
     expect(table.category.name).toBe('category');
     expect(table.description.name).toBe('description');
     expect(table.rawAudioPrompt.name).toBe('raw_audio_prompt');

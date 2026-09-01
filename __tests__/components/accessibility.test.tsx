@@ -118,6 +118,18 @@ describe('Accessibility Audit & Assertions across MVP Surfaces', () => {
         description: null,
         rawAudioPrompt: null,
       },
+      {
+        id: '33333333-3333-4333-8333-333333333333',
+        createdAt: '2026-08-26T14:00:00Z',
+        date: '2026-08-26',
+        type: 'transfer',
+        amount: '20000.00',
+        bankEntity: 'Banco Galicia',
+        destinationBankEntity: 'Mercado Pago',
+        category: 'Transferencia',
+        description: 'Pase a billetera',
+        rawAudioPrompt: null,
+      },
     ];
 
     const onDelete = vi.fn();
@@ -125,9 +137,12 @@ describe('Accessibility Audit & Assertions across MVP Surfaces', () => {
 
     expect(screen.getByRole('button', { name: /eliminar transacción supermercado - 2026-08-26/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /eliminar transacción sueldo - 2026-08-26/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /eliminar transacción transferencia - 2026-08-26/i })).toBeInTheDocument();
 
     expect(screen.getByText(/gasto/i)).toBeInTheDocument();
     expect(screen.getByText(/ingreso/i)).toBeInTheDocument();
+    expect(screen.getByText(/⇄ transferencia/i)).toBeInTheDocument();
+    expect(screen.getByText(/Banco Galicia → Mercado Pago/i)).toBeInTheDocument();
   });
 
   it('BreakdownList: progressbars have accessible progressbar roles and value ranges', () => {

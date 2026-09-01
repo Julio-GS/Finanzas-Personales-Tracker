@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   movementTypeSchema,
+  voiceMovementTypeSchema,
   manualTransactionInputSchema,
   audioTransactionInputSchema,
   geminiExtractedTransactionSchema,
@@ -11,16 +12,35 @@ import {
 
 describe('Validation Schemas', () => {
   describe('movementTypeSchema', () => {
-    it('accepts income, expense, and investment', () => {
+    it('accepts income, expense, investment, and transfer', () => {
       expect(movementTypeSchema.parse('income')).toBe('income');
       expect(movementTypeSchema.parse('expense')).toBe('expense');
       expect(movementTypeSchema.parse('investment')).toBe('investment');
+      expect(movementTypeSchema.parse('transfer')).toBe('transfer');
     });
 
     it('rejects invalid movement types', () => {
       expect(() => movementTypeSchema.parse('other')).toThrow();
       expect(() => movementTypeSchema.parse('')).toThrow();
       expect(() => movementTypeSchema.parse(123)).toThrow();
+    });
+  });
+
+  describe('voiceMovementTypeSchema', () => {
+    it('accepts income, expense, and investment', () => {
+      expect(voiceMovementTypeSchema.parse('income')).toBe('income');
+      expect(voiceMovementTypeSchema.parse('expense')).toBe('expense');
+      expect(voiceMovementTypeSchema.parse('investment')).toBe('investment');
+    });
+
+    it('rejects transfer for voice movement type', () => {
+      expect(() => voiceMovementTypeSchema.parse('transfer')).toThrow();
+    });
+
+    it('rejects invalid movement types', () => {
+      expect(() => voiceMovementTypeSchema.parse('other')).toThrow();
+      expect(() => voiceMovementTypeSchema.parse('')).toThrow();
+      expect(() => voiceMovementTypeSchema.parse(123)).toThrow();
     });
   });
 
@@ -153,6 +173,88 @@ describe('Validation Schemas', () => {
       expect(() => manualTransactionInputSchema.parse({ ...base, date: 'not-a-date' })).toThrow();
       expect(() => manualTransactionInputSchema.parse({ ...base, date: '2026-13-45' })).toThrow();
     });
+
+    describe('transfer transactions', () => {
+      it('accepts valid transfer with distinct source and destination accounts', () => {
+        const result = manualTransactionInputSchema.parse({
+          type: 'transfer',
+          amount: 50000,
+          bankEntity: 'Banco Galicia',
+          destinationBankEntity: 'Mercado Pago',
+          date: '2026-08-26',
+          description: 'Transferencia para gastos',
+        });
+
+        expect(result.type).toBe('transfer');
+        expect(result.amount).toBe('50000.00');
+        expect(result.bankEntity).toBe('Banco Galicia');
+        expect(result.destinationBankEntity).toBe('Mercado Pago');
+        expect(result.category).toBe('Transferencia');
+        expect(result.date).toBe('2026-08-26');
+        expect(result.description).toBe('Transferencia para gastos');
+      });
+
+      it('defaults category to Transferencia when omitted for transfer', () => {
+        const result = manualTransactionInputSchema.parse({
+          type: 'transfer',
+          amount: '1000.5',
+          bankEntity: 'Efectivo',
+          destinationBankEntity: 'Naranja X',
+          date: '2026-08-26',
+        });
+
+        expect(result.category).toBe('Transferencia');
+        expect(result.destinationBankEntity).toBe('Naranja X');
+      });
+
+      it('rejects transfer when destination account is missing or empty', () => {
+        expect(() =>
+          manualTransactionInputSchema.parse({
+            type: 'transfer',
+            amount: 1000,
+            bankEntity: 'Banco Galicia',
+            date: '2026-08-26',
+          })
+        ).toThrow();
+      });
+
+      it('rejects transfer when source and destination accounts are identical', () => {
+        expect(() =>
+          manualTransactionInputSchema.parse({
+            type: 'transfer',
+            amount: 1000,
+            bankEntity: 'Banco Galicia',
+            destinationBankEntity: 'Banco Galicia',
+            date: '2026-08-26',
+          })
+        ).toThrow();
+      });
+
+      it('rejects transfer when destination account is outside allowed accounts catalog', () => {
+        expect(() =>
+          manualTransactionInputSchema.parse({
+            type: 'transfer',
+            amount: 1000,
+            bankEntity: 'Banco Galicia',
+            destinationBankEntity: 'Santander',
+            date: '2026-08-26',
+          })
+        ).toThrow();
+      });
+
+      it('sets destinationBankEntity to null for non-transfer movement types', () => {
+        const res = manualTransactionInputSchema.parse({
+          type: 'income',
+          amount: 1000,
+          bankEntity: 'Banco Galicia',
+          category: 'Sueldo',
+          date: '2026-08-26',
+          destinationBankEntity: 'Mercado Pago',
+        });
+
+        expect(res.destinationBankEntity).toBeNull();
+      });
+    });
   });
 
   describe('audioTransactionInputSchema', () => {
@@ -202,6 +304,17 @@ describe('Validation Schemas', () => {
   });
 
   describe('geminiExtractedTransactionSchema', () => {
+    it('rejects transfer movement type for voice/gemini extracted transactions', () => {
+      expect(() =>
+        geminiExtractedTransactionSchema.parse({
+          type: 'transfer',
+          amount: 5000,
+          bankEntity: 'Mercado Pago',
+          category: 'Transferencia',
+        })
+      ).toThrow();
+    });
+
     it('accepts extracted transaction with all fields', () => {
       const result = geminiExtractedTransactionSchema.parse({
         type: 'expense',

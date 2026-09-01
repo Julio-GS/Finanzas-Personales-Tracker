@@ -177,6 +177,26 @@ describe('lib/gemini - Gemini Voice Extraction Wrapper', () => {
       ]);
     });
 
+    it('constrains movement type in responseSchema to income, expense, and investment (excluding transfer)', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        text: JSON.stringify({
+          type: 'expense',
+          amount: 1500,
+          bankEntity: 'Mercado Pago',
+          category: 'Almuerzo',
+        }),
+      });
+
+      await extractTransactionFromAudio({
+        audio: Buffer.from('audio').toString('base64'),
+        mimeType: 'audio/webm',
+      });
+
+      const callArgs = mockGenerateContent.mock.calls[0][0];
+      const schema = callArgs.config.responseSchema;
+      expect(schema.properties.type.enum).toEqual(['income', 'expense', 'investment']);
+    });
+
     it('throws GeminiProviderError when GEMINI_API_KEY is not configured', async () => {
       vi.stubEnv('GEMINI_API_KEY', '');
 

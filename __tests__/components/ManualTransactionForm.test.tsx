@@ -126,4 +126,99 @@ describe('ManualTransactionForm', () => {
     resolveFetch({ ok: true, status: 201, json: async () => ({ transaction: {} }) });
     await waitFor(() => expect(screen.getByRole('button', { name: /guardar|registrar/i })).not.toBeDisabled());
   });
+
+  describe('Transfer Registration', () => {
+    it('renders transfer option in type select and shows origin and destination selects when selected', async () => {
+      const user = userEvent.setup();
+      render(<ManualTransactionForm />);
+
+      const typeSelect = screen.getByLabelText(/tipo/i);
+      expect(screen.getByRole('option', { name: /transferencia/i })).toBeInTheDocument();
+
+      await user.selectOptions(typeSelect, 'transfer');
+
+      expect(screen.getByLabelText(/cuenta.*origen|entidad \/ cuenta/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/cuenta.*destino/i)).toBeInTheDocument();
+    });
+
+    it('submits valid transfer with distinct accounts and resets form', async () => {
+      const user = userEvent.setup(), onSuccess = vi.fn();
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          transaction: {
+            id: 'tx-transfer-1',
+            type: 'transfer',
+            amount: '5000.00',
+            bankEntity: 'Banco Galicia',
+            destinationBankEntity: 'Mercado Pago',
+            category: 'Transferencia',
+            date: '2026-08-26',
+          },
+        }),
+      });
+      global.fetch = fetchMock;
+
+      render(<ManualTransactionForm onSuccess={onSuccess} />);
+
+      await user.selectOptions(screen.getByLabelText(/tipo/i), 'transfer');
+      await user.type(screen.getByLabelText(/monto/i), '5000');
+      await user.selectOptions(screen.getByLabelText(/cuenta.*origen|entidad \/ cuenta/i), 'Banco Galicia');
+      await user.selectOptions(screen.getByLabelText(/cuenta.*destino/i), 'Mercado Pago');
+      await user.click(screen.getByRole('button', { name: /guardar|registrar/i }));
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          '/api/transactions',
+          expect.objectContaining({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: expect.stringContaining('"type":"transfer"'),
+          })
+        );
+      });
+
+      const parsed = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(parsed.type).toBe('transfer');
+      expect(parsed.amount).toBe(5000);
+      expect(parsed.bankEntity).toBe('Banco Galicia');
+      expect(parsed.destinationBankEntity).toBe('Mercado Pago');
+      expect(parsed.category).toBe('Transferencia');
+
+      await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+      expect(screen.getByRole('status')).toHaveTextContent(/registrada correctamente/i);
+    });
+
+    it('validates that source and destination accounts must be different', async () => {
+      const user = userEvent.setup(), fetchMock = vi.fn();
+      global.fetch = fetchMock;
+
+      render(<ManualTransactionForm />);
+
+      await user.selectOptions(screen.getByLabelText(/tipo/i), 'transfer');
+      await user.type(screen.getByLabelText(/monto/i), '5000');
+      await user.selectOptions(screen.getByLabelText(/cuenta.*origen|entidad \/ cuenta/i), 'Banco Galicia');
+      await user.selectOptions(screen.getByLabelText(/cuenta.*destino/i), 'Banco Galicia');
+      await user.click(screen.getByRole('button', { name: /guardar|registrar/i }));
+
+      expect(screen.getByRole('alert')).toHaveTextContent(/distintas|diferentes/i);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('validates that destination account is required for transfer', async () => {
+      const user = userEvent.setup(), fetchMock = vi.fn();
+      global.fetch = fetchMock;
+
+      render(<ManualTransactionForm />);
+
+      await user.selectOptions(screen.getByLabelText(/tipo/i), 'transfer');
+      await user.type(screen.getByLabelText(/monto/i), '5000');
+      await user.selectOptions(screen.getByLabelText(/cuenta.*origen|entidad \/ cuenta/i), 'Banco Galicia');
+      await user.click(screen.getByRole('button', { name: /guardar|registrar/i }));
+
+      expect(screen.getByRole('alert')).toHaveTextContent(/destino.*requerida/i);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
 });

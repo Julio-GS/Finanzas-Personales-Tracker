@@ -242,6 +242,35 @@ describe('POST /api/transactions/audio - Voice Audio Extraction Route', () => {
     expect((insertSpy.mock.calls[0][0] as any).audio).toBeUndefined();
   });
 
+  it('returns 422 extraction_failed and does NOT insert when Gemini extracts type transfer', async () => {
+    const insertSpy = vi.spyOn(queries, 'insertTransaction');
+    vi.spyOn(gemini, 'extractTransactionFromAudio').mockResolvedValueOnce({
+      type: 'transfer' as any,
+      amount: 5000,
+      bankEntity: 'Mercado Pago',
+      category: 'Transferencia',
+      date: '2026-08-26',
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/transactions/audio', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        cookie: `${AUTH_COOKIE_NAME}=${validCookie}`,
+      },
+      body: JSON.stringify({
+        audio: Buffer.from('audio').toString('base64'),
+        mimeType: 'audio/webm',
+      }),
+    });
+
+    const res = await postAudioTransaction(req);
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error.code).toBe('extraction_failed');
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
+
   it('returns 422 extraction_failed when Gemini extracts an account outside the 4 allowed accounts', async () => {
     const insertSpy = vi.spyOn(queries, 'insertTransaction');
     vi.spyOn(gemini, 'extractTransactionFromAudio').mockResolvedValueOnce({

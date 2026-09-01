@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatMoney } from '@/lib/money';
 import type { TransactionItem, MovementType } from '@/lib/types';
-import { ArrowDownLeft, ArrowUpRight, Wallet, Trash2, Mic, ReceiptText } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Wallet, Trash2, Mic, ReceiptText, ArrowLeftRight } from 'lucide-react';
 
 export interface TransactionListProps {
   transactions: TransactionItem[];
@@ -16,6 +16,7 @@ const BADGES: Record<MovementType, { label: string; prefix: string; icon: React.
   income: { label: 'Ingreso', prefix: '+', icon: ArrowDownLeft, badgeClass: 'bg-success/15 text-success border-success/30', textClass: 'text-success' },
   expense: { label: 'Gasto', prefix: '-', icon: ArrowUpRight, badgeClass: 'bg-destructive/15 text-destructive border-destructive/30', textClass: 'text-destructive' },
   investment: { label: 'Inversión', prefix: '★', icon: Wallet, badgeClass: 'bg-primary/15 text-primary border-primary/30', textClass: 'text-primary' },
+  transfer: { label: 'Transferencia', prefix: '⇄', icon: ArrowLeftRight, badgeClass: 'bg-secondary text-foreground border-border/60', textClass: 'text-foreground' },
 };
 
 export function TransactionList({ transactions, onDelete, deletingId = null, loading = false }: TransactionListProps): React.JSX.Element {
@@ -54,7 +55,11 @@ export function TransactionList({ transactions, onDelete, deletingId = null, loa
                         </span>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground/80">{tx.bankEntity}</span>
+                        <span className="font-medium text-foreground/80">
+                          {tx.type === 'transfer' && tx.destinationBankEntity
+                            ? `${tx.bankEntity} → ${tx.destinationBankEntity}`
+                            : tx.bankEntity}
+                        </span>
                         <span>•</span>
                         <time dateTime={tx.date}>{tx.date}</time>
                       </div>

@@ -8,6 +8,13 @@
       "when": 1787751954729,
       "tag": "0000_puzzling_iceman",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788296160639,
+      "tag": "0001_perpetual_zombie",
+      "breakpoints": true
     }
   ]
 }

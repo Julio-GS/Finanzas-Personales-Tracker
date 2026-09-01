@@ -4,6 +4,7 @@ export const movementTypeEnum = pgEnum('movement_type', [
   'income',
   'expense',
   'investment',
+  'transfer',
 ]);
 
 export const transactions = pgTable(
@@ -17,6 +18,7 @@ export const transactions = pgTable(
     type: movementTypeEnum('type').notNull(),
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
     bankEntity: text('bank_entity').notNull(),
+    destinationBankEntity: text('destination_bank_entity'),
     category: text('category').notNull(),
     description: text('description'),
     rawAudioPrompt: text('raw_audio_prompt'),

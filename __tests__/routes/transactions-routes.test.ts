@@ -257,6 +257,83 @@ describe('Transactions API Routes', () => {
       });
     });
 
+    it('creates a transfer transaction and returns 201 with transfer transaction object', async () => {
+      const mockCreated = {
+        id: '22222222-2222-2222-2222-222222222222',
+        createdAt: new Date('2026-08-26T14:00:00Z'),
+        date: '2026-08-26',
+        type: 'transfer' as const,
+        amount: '15000.00',
+        bankEntity: 'Banco Galicia',
+        destinationBankEntity: 'Mercado Pago',
+        category: 'Transferencia',
+        description: 'Envío de fondos',
+        rawAudioPrompt: null,
+      };
+
+      vi.spyOn(queries, 'insertTransaction').mockResolvedValueOnce(mockCreated as any);
+
+      const req = new NextRequest('http://localhost:3000/api/transactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `${AUTH_COOKIE_NAME}=${validCookie}`,
+        },
+        body: JSON.stringify({
+          type: 'transfer',
+          amount: 15000,
+          bankEntity: 'Banco Galicia',
+          destinationBankEntity: 'Mercado Pago',
+          date: '2026-08-26',
+          description: 'Envío de fondos',
+        }),
+      });
+
+      const res = await postTransaction(req);
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.transaction).toEqual({
+        ...mockCreated,
+        createdAt: mockCreated.createdAt.toISOString(),
+      });
+      expect(queries.insertTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'transfer',
+          amount: '15000.00',
+          bankEntity: 'Banco Galicia',
+          destinationBankEntity: 'Mercado Pago',
+          category: 'Transferencia',
+          date: '2026-08-26',
+          description: 'Envío de fondos',
+        })
+      );
+    });
+
+    it('rejects a transfer with identical source and destination accounts with 422', async () => {
+      const insertSpy = vi.spyOn(queries, 'insertTransaction');
+
+      const req = new NextRequest('http://localhost:3000/api/transactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `${AUTH_COOKIE_NAME}=${validCookie}`,
+        },
+        body: JSON.stringify({
+          type: 'transfer',
+          amount: 5000,
+          bankEntity: 'Banco Galicia',
+          destinationBankEntity: 'Banco Galicia',
+          date: '2026-08-26',
+        }),
+      });
+
+      const res = await postTransaction(req);
+      expect(res.status).toBe(422);
+      const body = await res.json();
+      expect(body.error.code).toBe('validation_error');
+      expect(insertSpy).not.toHaveBeenCalled();
+    });
+
     it('returns 500 database_error when insert throws', async () => {
       vi.spyOn(queries, 'insertTransaction').mockRejectedValueOnce(new Error('DB failure'));
 

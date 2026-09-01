@@ -94,6 +94,52 @@ describe('Database Queries (db/queries.ts)', () => {
       expect(insertedValues.description).toBeNull();
       expect(insertedValues.amount).toBe('5000.00');
     });
+
+    it('inserts a transfer transaction with trimmed destinationBankEntity', async () => {
+      const mockCreated = {
+        id: '33333333-3333-3333-3333-333333333333',
+        createdAt: new Date('2026-08-26T12:00:00Z'),
+        date: '2026-08-26',
+        type: 'transfer' as const,
+        amount: '25000.00',
+        bankEntity: 'Banco Galicia',
+        destinationBankEntity: 'Mercado Pago',
+        category: 'Transferencia',
+        description: 'Pase a MP',
+        rawAudioPrompt: null,
+      };
+
+      let insertedValues: any;
+      const mockDb = {
+        insert: vi.fn().mockReturnValue({
+          values: vi.fn().mockImplementation((val) => {
+            insertedValues = val;
+            return {
+              returning: vi.fn().mockResolvedValue([mockCreated]),
+            };
+          }),
+        }),
+      };
+
+      const result = await insertTransaction(
+        {
+          type: 'transfer',
+          amount: '25000.00',
+          bankEntity: '  Banco Galicia  ',
+          destinationBankEntity: '  Mercado Pago  ',
+          category: 'Transferencia',
+          date: '2026-08-26',
+          description: 'Pase a MP',
+        },
+        mockDb as any
+      );
+
+      expect(insertedValues.type).toBe('transfer');
+      expect(insertedValues.bankEntity).toBe('Banco Galicia');
+      expect(insertedValues.destinationBankEntity).toBe('Mercado Pago');
+      expect(insertedValues.category).toBe('Transferencia');
+      expect(result).toEqual(mockCreated);
+    });
   });
 
   describe('getMonthDashboard', () => {
@@ -627,6 +673,180 @@ describe('Database Queries (db/queries.ts)', () => {
       expect(result.kpis.expenses).toBe('3500.75');
       expect(result.kpis.investments).toBe('0.00');
       expect(result.kpis.netFlow).toBe('-2500.75');
+    });
+
+    it('correctly handles internal transfers: decreases source net, increases destination net, leaves global KPIs unchanged', async () => {
+      const mockTxs = [
+        {
+          id: 'tx-1',
+          createdAt: new Date('2026-08-01T10:00:00Z'),
+          date: '2026-08-01',
+          type: 'income' as const,
+          amount: '100000.00',
+          bankEntity: 'Banco Galicia',
+          destinationBankEntity: null,
+          category: 'Sueldo',
+          description: null,
+          rawAudioPrompt: null,
+        },
+        {
+          id: 'tx-2',
+          createdAt: new Date('2026-08-05T10:00:00Z'),
+          date: '2026-08-05',
+          type: 'transfer' as const,
+          amount: '20000.00',
+          bankEntity: 'Banco Galicia',
+          destinationBankEntity: 'Mercado Pago',
+          category: 'Transferencia',
+          description: 'Transferencia a MP',
+          rawAudioPrompt: null,
+        },
+        {
+          id: 'tx-3',
+          createdAt: new Date('2026-08-10T10:00:00Z'),
+          date: '2026-08-10',
+          type: 'expense' as const,
+          amount: '30000.00',
+          bankEntity: 'Mercado Pago',
+          destinationBankEntity: null,
+          category: 'Supermercado',
+          description: null,
+          rawAudioPrompt: null,
+        },
+      ];
+
+      const mockDb = {
+        select: vi.fn().mockImplementation((selection) => {
+          if (selection && selection.totalInvestments) {
+            return {
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockResolvedValue([{ totalInvestments: '0' }]),
+              }),
+            };
+          }
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue(mockTxs),
+              }),
+            }),
+          };
+        }),
+      };
+
+      const result = await getMonthDashboard(2026, 8, mockDb as any);
+
+      // Global KPIs must not include the transfer
+      expect(result.kpis.income).toBe('100000.00');
+      expect(result.kpis.expenses).toBe('30000.00');
+      expect(result.kpis.investments).toBe('0.00');
+      expect(result.kpis.netFlow).toBe('70000.00');
+
+      // Account Net:
+      // Banco Galicia: income=100k, exp=0, inv=0, transfer out=20k -> net = 80,000.00
+      const galicia = result.breakdowns.byEntity.find((b: any) => b.account === 'Banco Galicia');
+      expect(galicia?.net).toBe('80000.00');
+      expect(galicia?.income).toBe('100000.00');
+      expect(galicia?.expenses).toBe('0.00');
+
+      // Mercado Pago: income=0, exp=30k, inv=0, transfer in=20k -> net = -10,000.00
+      const mp = result.breakdowns.byEntity.find((b: any) => b.account === 'Mercado Pago');
+      expect(mp?.net).toBe('-10000.00');
+      expect(mp?.income).toBe('0.00');
+      expect(mp?.expenses).toBe('30000.00');
+
+      // Naranja X and Efectivo remain 0
+      const naranja = result.breakdowns.byEntity.find((b: any) => b.account === 'Naranja X');
+      expect(naranja?.net).toBe('0.00');
+      const efectivo = result.breakdowns.byEntity.find((b: any) => b.account === 'Efectivo');
+      expect(efectivo?.net).toBe('0.00');
+
+      expect(result.transactions).toEqual(mockTxs);
+    });
+
+    it('triangulates multiple transfers between accounts preserving zero global impact', async () => {
+      const mockTxs = [
+        {
+          id: 't-1',
+          createdAt: new Date('2026-08-01T10:00:00Z'),
+          date: '2026-08-01',
+          type: 'transfer' as const,
+          amount: '50000.00',
+          bankEntity: 'Banco Galicia',
+          destinationBankEntity: 'Mercado Pago',
+          category: 'Transferencia',
+          description: null,
+          rawAudioPrompt: null,
+        },
+        {
+          id: 't-2',
+          createdAt: new Date('2026-08-02T10:00:00Z'),
+          date: '2026-08-02',
+          type: 'transfer' as const,
+          amount: '30000.00',
+          bankEntity: 'Mercado Pago',
+          destinationBankEntity: 'Naranja X',
+          category: 'Transferencia',
+          description: null,
+          rawAudioPrompt: null,
+        },
+        {
+          id: 't-3',
+          createdAt: new Date('2026-08-03T10:00:00Z'),
+          date: '2026-08-03',
+          type: 'transfer' as const,
+          amount: '10000.00',
+          bankEntity: 'Naranja X',
+          destinationBankEntity: 'Efectivo',
+          category: 'Transferencia',
+          description: null,
+          rawAudioPrompt: null,
+        },
+      ];
+
+      const mockDb = {
+        select: vi.fn().mockImplementation((selection) => {
+          if (selection && selection.totalInvestments) {
+            return {
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockResolvedValue([{ totalInvestments: '0' }]),
+              }),
+            };
+          }
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue(mockTxs),
+              }),
+            }),
+          };
+        }),
+      };
+
+      const result = await getMonthDashboard(2026, 8, mockDb as any);
+
+      // Global KPIs
+      expect(result.kpis.income).toBe('0.00');
+      expect(result.kpis.expenses).toBe('0.00');
+      expect(result.kpis.investments).toBe('0.00');
+      expect(result.kpis.netFlow).toBe('0.00');
+
+      // Per-account nets:
+      // Galicia: -50,000.00
+      const galicia = result.breakdowns.byEntity.find((b: any) => b.account === 'Banco Galicia');
+      expect(galicia?.net).toBe('-50000.00');
+
+      // Mercado Pago: +50k in - 30k out = +20,000.00
+      const mp = result.breakdowns.byEntity.find((b: any) => b.account === 'Mercado Pago');
+      expect(mp?.net).toBe('20000.00');
+
+      // Naranja X: +30k in - 10k out = +20,000.00
+      const naranja = result.breakdowns.byEntity.find((b: any) => b.account === 'Naranja X');
+      expect(naranja?.net).toBe('20000.00');
+
+      // Efectivo: +10k in = +10,000.00
+      const efectivo = result.breakdowns.byEntity.find((b: any) => b.account === 'Efectivo');
+      expect(efectivo?.net).toBe('10000.00');
     });
 
     it('passes exact month range [YYYY-12-01, YYYY+1-01-01) for December', async () => {

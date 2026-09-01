@@ -13,31 +13,33 @@ describe('Migration SQL Snapshot Integrity', () => {
     expect(sqlFiles.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('verifies generated sql contains only transactions table and movement_type enum', () => {
+  it('keeps the initial transaction schema in the baseline migration', () => {
+    const baseline = fs.readFileSync(
+      path.join(migrationsDir, '0000_puzzling_iceman.sql'),
+      'utf-8'
+    );
+
+    expect(baseline).toContain('CREATE TYPE "public"."movement_type"');
+    expect(baseline).toContain('CREATE TABLE "transactions"');
+    expect(baseline).toContain('CREATE INDEX "idx_transactions_date"');
+    expect(baseline).toContain('CREATE INDEX "idx_transactions_type"');
+    expect(baseline).toContain('CREATE INDEX "idx_transactions_entity"');
+  });
+
+  it('keeps every migration free of auth tables', () => {
     const files = fs.readdirSync(migrationsDir);
     const sqlFiles = files.filter((f) => f.endsWith('.sql'));
+    const forbiddenPatterns = [
+      /CREATE TABLE\s+"users"/i,
+      /CREATE TABLE\s+"sessions"/i,
+      /CREATE TABLE\s+"accounts"/i,
+      /CREATE TABLE\s+"user"/i,
+      /CREATE TABLE\s+"session"/i,
+      /CREATE TABLE\s+"auth/i,
+    ];
 
     for (const sqlFile of sqlFiles) {
       const content = fs.readFileSync(path.join(migrationsDir, sqlFile), 'utf-8');
-
-      // Must create movement_type enum and transactions table
-      expect(content).toContain('CREATE TYPE "public"."movement_type"');
-      expect(content).toContain('CREATE TABLE "transactions"');
-
-      // Must have the three indexes
-      expect(content).toContain('CREATE INDEX "idx_transactions_date"');
-      expect(content).toContain('CREATE INDEX "idx_transactions_type"');
-      expect(content).toContain('CREATE INDEX "idx_transactions_entity"');
-
-      // Must NOT contain users, sessions, accounts, or auth tables
-      const forbiddenPatterns = [
-        /CREATE TABLE\s+"users"/i,
-        /CREATE TABLE\s+"sessions"/i,
-        /CREATE TABLE\s+"accounts"/i,
-        /CREATE TABLE\s+"user"/i,
-        /CREATE TABLE\s+"session"/i,
-        /CREATE TABLE\s+"auth/i,
-      ];
 
       for (const pattern of forbiddenPatterns) {
         expect(pattern.test(content)).toBe(false);
