@@ -170,12 +170,13 @@ describe('Database Queries (db/queries.ts)', () => {
       expect(result.kpis.netFlow).toBe('50000.00');
       expect(result.kpis.cumulativeInvestments).toBe('75000.00');
 
-      // Breakdowns by entity: Banco Galicia (inc: 100000, exp: 0, net: 100000), Mercado Pago (inc: 0, exp: 30000, net: -30000), Naranja X (0), Efectivo (0)
+      // Breakdowns by entity: Banco Galicia (inc: 100000, exp: 0, net: 80000, inv: 20000), Mercado Pago (inc: 0, exp: 30000, net: -30000), Naranja X (0), Efectivo (0)
       const galicia = result.breakdowns.byEntity.find((b: any) => b.account === 'Banco Galicia' || b.label === 'Banco Galicia');
       expect(galicia).toBeDefined();
       expect(galicia?.income).toBe('100000.00');
       expect(galicia?.expenses).toBe('0.00');
-      expect(galicia?.net).toBe('100000.00');
+      expect(galicia?.investments).toBe('20000.00');
+      expect(galicia?.net).toBe('80000.00');
 
       const mp = result.breakdowns.byEntity.find((b: any) => b.account === 'Mercado Pago' || b.label === 'Mercado Pago');
       expect(mp).toBeDefined();
@@ -203,6 +204,234 @@ describe('Database Queries (db/queries.ts)', () => {
       ]);
 
       expect(result.transactions).toEqual(mockTxs);
+    });
+
+    it('correctly calculates per-account net by subtracting investments for funding account (e.g. 1,377,000 from Banco Galicia)', async () => {
+      const mockTxs = [
+        {
+          id: 'tx-1',
+          createdAt: new Date('2026-08-01T10:00:00Z'),
+          date: '2026-08-01',
+          type: 'income' as const,
+          amount: '1500000.00',
+          bankEntity: 'Banco Galicia',
+          category: 'Sueldo',
+          description: 'Salario mensual',
+          rawAudioPrompt: null,
+        },
+        {
+          id: 'tx-2',
+          createdAt: new Date('2026-08-05T11:00:00Z'),
+          date: '2026-08-05',
+          type: 'expense' as const,
+          amount: '200000.00',
+          bankEntity: 'Banco Galicia',
+          category: 'Servicios',
+          description: 'Facturas',
+          rawAudioPrompt: null,
+        },
+        {
+          id: 'tx-3',
+          createdAt: new Date('2026-08-10T12:00:00Z'),
+          date: '2026-08-10',
+          type: 'investment' as const,
+          amount: '1377000.00',
+          bankEntity: 'Banco Galicia',
+          category: 'CEDEARs',
+          description: 'Compra de acciones/bonos',
+          rawAudioPrompt: null,
+        },
+        {
+          id: 'tx-4',
+          createdAt: new Date('2026-08-15T15:00:00Z'),
+          date: '2026-08-15',
+          type: 'income' as const,
+          amount: '50000.00',
+          bankEntity: 'Mercado Pago',
+          category: 'Transferencia',
+          description: null,
+          rawAudioPrompt: null,
+        },
+        {
+          id: 'tx-5',
+          createdAt: new Date('2026-08-20T16:00:00Z'),
+          date: '2026-08-20',
+          type: 'expense' as const,
+          amount: '20000.00',
+          bankEntity: 'Mercado Pago',
+          category: 'Supermercado',
+          description: null,
+          rawAudioPrompt: null,
+        },
+      ];
+
+      const mockDb = {
+        select: vi.fn().mockImplementation((selection) => {
+          if (selection && selection.totalInvestments) {
+            return {
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockResolvedValue([{ totalInvestments: '2000000.00' }]),
+              }),
+            };
+          }
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue(mockTxs),
+              }),
+            }),
+          };
+        }),
+      };
+
+      const result = await getMonthDashboard(2026, 8, mockDb as any);
+
+      // Global KPIs:
+      // income = 1500000 + 50000 = 1550000.00
+      // expenses = 200000 + 20000 = 220000.00
+      // investments = 1377000.00
+      // netFlow = 1550000 - 220000 - 1377000 = -47000.00
+      expect(result.kpis.income).toBe('1550000.00');
+      expect(result.kpis.expenses).toBe('220000.00');
+      expect(result.kpis.investments).toBe('1377000.00');
+      expect(result.kpis.netFlow).toBe('-47000.00');
+      expect(result.kpis.cumulativeInvestments).toBe('2000000.00');
+
+      // Per-account:
+      // Banco Galicia: income=1500000, expenses=200000, investments=1377000
+      // net = 1500000 - 200000 - 1377000 = -77000.00
+      // total activity = 1500000 + 200000 + 1377000 = 3077000.00
+      const galicia = result.breakdowns.byEntity.find((b: any) => b.account === 'Banco Galicia');
+      expect(galicia).toBeDefined();
+      expect(galicia?.income).toBe('1500000.00');
+      expect(galicia?.expenses).toBe('200000.00');
+      expect(galicia?.investments).toBe('1377000.00');
+      expect(galicia?.net).toBe('-77000.00');
+      expect(galicia?.total).toBe('3077000.00');
+
+      // Mercado Pago: income=50000, expenses=20000, investments=0
+      // net = 50000 - 20000 - 0 = 30000.00
+      const mp = result.breakdowns.byEntity.find((b: any) => b.account === 'Mercado Pago');
+      expect(mp).toBeDefined();
+      expect(mp?.income).toBe('50000.00');
+      expect(mp?.expenses).toBe('20000.00');
+      expect(mp?.investments).toBe('0.00');
+      expect(mp?.net).toBe('30000.00');
+      expect(mp?.total).toBe('70000.00');
+    });
+
+    it('triangulates net flow across zero-net, investment-only, and mixed accounts', async () => {
+      const mockTxs = [
+        // Galicia: 100k income, 100k investment -> net 0.00
+        {
+          id: 't-1',
+          createdAt: new Date('2026-08-01T10:00:00Z'),
+          date: '2026-08-01',
+          type: 'income' as const,
+          amount: '100000.00',
+          bankEntity: 'Banco Galicia',
+          category: 'Sueldo',
+          description: null,
+          rawAudioPrompt: null,
+        },
+        {
+          id: 't-2',
+          createdAt: new Date('2026-08-02T10:00:00Z'),
+          date: '2026-08-02',
+          type: 'investment' as const,
+          amount: '100000.00',
+          bankEntity: 'Banco Galicia',
+          category: 'Plazo Fijo',
+          description: null,
+          rawAudioPrompt: null,
+        },
+        // Mercado Pago: 50k investment only -> net -50000.00
+        {
+          id: 't-3',
+          createdAt: new Date('2026-08-03T10:00:00Z'),
+          date: '2026-08-03',
+          type: 'investment' as const,
+          amount: '50000.00',
+          bankEntity: 'Mercado Pago',
+          category: 'Fondo Común',
+          description: null,
+          rawAudioPrompt: null,
+        },
+        // Naranja X: 200k income, 50k expenses, 30k investment -> net 120000.00
+        {
+          id: 't-4',
+          createdAt: new Date('2026-08-04T10:00:00Z'),
+          date: '2026-08-04',
+          type: 'income' as const,
+          amount: '200000.00',
+          bankEntity: 'Naranja X',
+          category: 'Freelance',
+          description: null,
+          rawAudioPrompt: null,
+        },
+        {
+          id: 't-5',
+          createdAt: new Date('2026-08-05T10:00:00Z'),
+          date: '2026-08-05',
+          type: 'expense' as const,
+          amount: '50000.00',
+          bankEntity: 'Naranja X',
+          category: 'Servicios',
+          description: null,
+          rawAudioPrompt: null,
+        },
+        {
+          id: 't-6',
+          createdAt: new Date('2026-08-06T10:00:00Z'),
+          date: '2026-08-06',
+          type: 'investment' as const,
+          amount: '30000.00',
+          bankEntity: 'Naranja X',
+          category: 'Cripto',
+          description: null,
+          rawAudioPrompt: null,
+        },
+      ];
+
+      const mockDb = {
+        select: vi.fn().mockImplementation((selection) => {
+          if (selection && selection.totalInvestments) {
+            return {
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockResolvedValue([{ totalInvestments: '180000.00' }]),
+              }),
+            };
+          }
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue(mockTxs),
+              }),
+            }),
+          };
+        }),
+      };
+
+      const result = await getMonthDashboard(2026, 8, mockDb as any);
+
+      // Global net: (100k + 200k) - 50k - (100k + 50k + 30k) = 300k - 50k - 180k = 70000.00
+      expect(result.kpis.netFlow).toBe('70000.00');
+
+      const galicia = result.breakdowns.byEntity.find((b: any) => b.account === 'Banco Galicia');
+      expect(galicia?.net).toBe('0.00');
+      expect(galicia?.total).toBe('200000.00');
+
+      const mp = result.breakdowns.byEntity.find((b: any) => b.account === 'Mercado Pago');
+      expect(mp?.net).toBe('-50000.00');
+      expect(mp?.total).toBe('50000.00');
+
+      const naranja = result.breakdowns.byEntity.find((b: any) => b.account === 'Naranja X');
+      expect(naranja?.net).toBe('120000.00');
+      expect(naranja?.total).toBe('280000.00');
+
+      const efectivo = result.breakdowns.byEntity.find((b: any) => b.account === 'Efectivo');
+      expect(efectivo?.net).toBe('0.00');
+      expect(efectivo?.total).toBe('0.00');
     });
 
     it('handles legacy historical bankEntity without breaking and includes it in account breakdown', async () => {

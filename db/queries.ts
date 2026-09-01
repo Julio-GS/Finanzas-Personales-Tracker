@@ -158,7 +158,7 @@ export async function getMonthDashboard(
 
   const byEntity: AccountBreakdownItem[] = Array.from(accountMap.entries())
     .map(([account, stats]) => {
-      const net = stats.income - stats.expenses;
+      const net = stats.income - stats.expenses - stats.investments;
       const totalActivity = stats.income + stats.expenses + stats.investments;
       return {
         account,

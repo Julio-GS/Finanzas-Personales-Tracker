@@ -247,6 +247,90 @@ describe('Dashboard UI Components', () => {
       );
       expect(screen.getByText('Cargando...')).toBeInTheDocument();
     });
+
+    it('correctly updates positive-account list when 1,377,000 investment reduces or removes funding bank', () => {
+      // Case A: Investment pushes Banco Galicia into deficit (net = -77,000.00)
+      const byEntityDeficit = [
+        {
+          account: 'Banco Galicia',
+          label: 'Banco Galicia',
+          income: '1500000.00',
+          expenses: '200000.00',
+          investments: '1377000.00',
+          net: '-77000.00',
+          total: '3077000.00',
+        },
+        {
+          account: 'Mercado Pago',
+          label: 'Mercado Pago',
+          income: '50000.00',
+          expenses: '20000.00',
+          investments: '0.00',
+          net: '30000.00',
+          total: '70000.00',
+        },
+      ];
+
+      const { rerender } = render(
+        <KpiCards
+          kpis={{
+            income: '1550000.00',
+            expenses: '220000.00',
+            investments: '1377000.00',
+            netFlow: '-47000.00',
+            cumulativeInvestments: '1377000.00',
+          }}
+          byEntity={byEntityDeficit}
+        />
+      );
+
+      // Galicia has negative net (-77,000) so it must NOT appear in positive accounts
+      expect(screen.queryByText('Banco Galicia')).not.toBeInTheDocument();
+      // Mercado Pago has positive net (30,000) so it MUST appear
+      expect(screen.getByText('Mercado Pago')).toBeInTheDocument();
+      expect(screen.getByText(/\$ 30\.000,00|\$30,000\.00/i)).toBeInTheDocument();
+
+      // Case B: Investment leaves Banco Galicia with reduced positive net (2,000,000 - 200,000 - 1,377,000 = +423,000.00)
+      const byEntityPositive = [
+        {
+          account: 'Banco Galicia',
+          label: 'Banco Galicia',
+          income: '2000000.00',
+          expenses: '200000.00',
+          investments: '1377000.00',
+          net: '423000.00',
+          total: '3577000.00',
+        },
+        {
+          account: 'Mercado Pago',
+          label: 'Mercado Pago',
+          income: '50000.00',
+          expenses: '20000.00',
+          investments: '0.00',
+          net: '30000.00',
+          total: '70000.00',
+        },
+      ];
+
+      rerender(
+        <KpiCards
+          kpis={{
+            income: '2050000.00',
+            expenses: '220000.00',
+            investments: '1377000.00',
+            netFlow: '453000.00',
+            cumulativeInvestments: '1377000.00',
+          }}
+          byEntity={byEntityPositive}
+        />
+      );
+
+      // Both accounts appear in positive list with exact reduced net
+      expect(screen.getByText('Banco Galicia')).toBeInTheDocument();
+      expect(screen.getByText(/\$ 423\.000,00|\$423,000\.00/i)).toBeInTheDocument();
+      expect(screen.getByText('Mercado Pago')).toBeInTheDocument();
+      expect(screen.getByText(/\$ 30\.000,00|\$30,000\.00/i)).toBeInTheDocument();
+    });
   });
 
   describe('BreakdownList', () => {
@@ -285,6 +369,32 @@ describe('Dashboard UI Components', () => {
 
       rerender(<BreakdownList byEntity={[]} byCategory={[]} />);
       expect(screen.getAllByText(/sin movimientos en este período/i).length).toBe(2);
+    });
+
+    it('renders separate Ingresos, Gastos, and Inversión labels and negative net for account with 1,377,000 investment', () => {
+      const accounts = [
+        {
+          account: 'Banco Galicia',
+          label: 'Banco Galicia',
+          income: '1500000.00',
+          expenses: '200000.00',
+          investments: '1377000.00',
+          net: '-77000.00',
+          total: '3077000.00',
+        },
+      ];
+
+      render(<BreakdownList byEntity={accounts} byCategory={[]} />);
+
+      expect(screen.getByText('Banco Galicia')).toBeInTheDocument();
+      expect(screen.getByText(/ingresos:/i)).toBeInTheDocument();
+      expect(screen.getByText(/\+\$ 1\.500\.000,00|\+\$1,500,000\.00/i)).toBeInTheDocument();
+      expect(screen.getByText(/gastos:/i)).toBeInTheDocument();
+      expect(screen.getByText(/-\$ 200\.000,00|-\$200,000\.00/i)).toBeInTheDocument();
+      expect(screen.getByText(/inversión \(movimiento\):/i)).toBeInTheDocument();
+      expect(screen.getByText(/★ \$ 1\.377\.000,00|★ \$1,377,000\.00/i)).toBeInTheDocument();
+      expect(screen.getByText(/neto:/i)).toBeInTheDocument();
+      expect(screen.getByText(/-\$ 77\.000,00|-\$77,000\.00/i)).toBeInTheDocument();
     });
   });
 
