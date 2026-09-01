@@ -128,11 +128,11 @@ describe('lib/gemini - Gemini Voice Extraction Wrapper', () => {
         text: JSON.stringify({
           type: 'income',
           amount: 50000,
-          bankEntity: 'Santander',
+          bankEntity: 'Banco Galicia',
           category: 'Sueldo',
           date: '2026-08-26',
           description: null,
-          rawAudioPrompt: 'Cobré el sueldo en Santander',
+          rawAudioPrompt: 'Cobré el sueldo en Banco Galicia',
         }),
       });
 
@@ -144,6 +144,37 @@ describe('lib/gemini - Gemini Voice Extraction Wrapper', () => {
 
       const callArgs = mockGenerateContent.mock.calls[0][0];
       expect(callArgs.model).toBe('gemini-3.5-flash-lite');
+    });
+
+    it('constrains bankEntity in responseSchema and prompt to the 4 fixed accounts', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        text: JSON.stringify({
+          type: 'expense',
+          amount: 1500,
+          bankEntity: 'Mercado Pago',
+          category: 'Almuerzo',
+        }),
+      });
+
+      await extractTransactionFromAudio({
+        audio: Buffer.from('audio').toString('base64'),
+        mimeType: 'audio/webm',
+      });
+
+      const callArgs = mockGenerateContent.mock.calls[0][0];
+      const prompt = callArgs.contents[0];
+      expect(prompt).toContain('Banco Galicia');
+      expect(prompt).toContain('Mercado Pago');
+      expect(prompt).toContain('Naranja X');
+      expect(prompt).toContain('Efectivo');
+
+      const schema = callArgs.config.responseSchema;
+      expect(schema.properties.bankEntity.enum).toEqual([
+        'Banco Galicia',
+        'Mercado Pago',
+        'Naranja X',
+        'Efectivo',
+      ]);
     });
 
     it('throws GeminiProviderError when GEMINI_API_KEY is not configured', async () => {

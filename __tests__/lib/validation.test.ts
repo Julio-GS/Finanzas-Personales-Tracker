@@ -47,7 +47,7 @@ describe('Validation Schemas', () => {
       const result = manualTransactionInputSchema.parse({
         type: 'income',
         amount: '250000',
-        bankEntity: 'Santander',
+        bankEntity: 'Banco Galicia',
         category: 'Sueldo',
         date: '2026-08-01',
       });
@@ -79,7 +79,7 @@ describe('Validation Schemas', () => {
     it('rejects invalid amounts (negative, zero, more than 2 decimal places, NaN)', () => {
       const base = {
         type: 'expense' as const,
-        bankEntity: 'Santander',
+        bankEntity: 'Banco Galicia',
         category: 'Comida',
         date: '2026-08-26',
       };
@@ -88,6 +88,42 @@ describe('Validation Schemas', () => {
       expect(() => manualTransactionInputSchema.parse({ ...base, amount: 0 })).toThrow();
       expect(() => manualTransactionInputSchema.parse({ ...base, amount: '12.345' })).toThrow();
       expect(() => manualTransactionInputSchema.parse({ ...base, amount: 'abc' })).toThrow();
+    });
+
+    it('rejects bankEntity outside the 4 allowed accounts catalog', () => {
+      const base = {
+        type: 'expense' as const,
+        amount: 100,
+        category: 'Comida',
+        date: '2026-08-26',
+      };
+
+      expect(() =>
+        manualTransactionInputSchema.parse({ ...base, bankEntity: 'Santander' })
+      ).toThrow();
+      expect(() =>
+        manualTransactionInputSchema.parse({ ...base, bankEntity: 'Lemon' })
+      ).toThrow();
+      expect(() =>
+        manualTransactionInputSchema.parse({ ...base, bankEntity: 'BBVA' })
+      ).toThrow();
+      expect(() =>
+        manualTransactionInputSchema.parse({ ...base, bankEntity: 'Cuenta DNI' })
+      ).toThrow();
+    });
+
+    it('accepts all 4 allowed accounts in manual transaction', () => {
+      const accounts = ['Banco Galicia', 'Mercado Pago', 'Naranja X', 'Efectivo'] as const;
+      for (const bankEntity of accounts) {
+        const result = manualTransactionInputSchema.parse({
+          type: 'expense',
+          amount: 100,
+          bankEntity,
+          category: 'Comida',
+          date: '2026-08-26',
+        });
+        expect(result.bankEntity).toBe(bankEntity);
+      }
     });
 
     it('rejects empty or whitespace-only bankEntity or category', () => {
@@ -109,7 +145,7 @@ describe('Validation Schemas', () => {
       const base = {
         type: 'expense' as const,
         amount: 100,
-        bankEntity: 'Santander',
+        bankEntity: 'Banco Galicia',
         category: 'Comida',
       };
 
@@ -194,6 +230,39 @@ describe('Validation Schemas', () => {
       expect(result.bankEntity).toBe('Efectivo');
       expect(result.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(result.description).toBeNull();
+    });
+
+    it('rejects gemini extracted bankEntity outside the 4 allowed accounts', () => {
+      expect(() =>
+        geminiExtractedTransactionSchema.parse({
+          type: 'expense',
+          amount: 5000,
+          bankEntity: 'Santander Rio',
+          category: 'Supermercado',
+        })
+      ).toThrow();
+
+      expect(() =>
+        geminiExtractedTransactionSchema.parse({
+          type: 'expense',
+          amount: 5000,
+          bankEntity: 'Lemon Cash',
+          category: 'Supermercado',
+        })
+      ).toThrow();
+    });
+
+    it('accepts all 4 allowed accounts for gemini extracted transaction', () => {
+      const accounts = ['Banco Galicia', 'Mercado Pago', 'Naranja X', 'Efectivo'] as const;
+      for (const bankEntity of accounts) {
+        const result = geminiExtractedTransactionSchema.parse({
+          type: 'expense',
+          amount: 5000,
+          bankEntity,
+          category: 'Supermercado',
+        });
+        expect(result.bankEntity).toBe(bankEntity);
+      }
     });
   });
 

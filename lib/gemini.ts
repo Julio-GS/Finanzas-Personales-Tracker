@@ -81,8 +81,9 @@ const transactionResponseSchema = {
     },
     bankEntity: {
       type: 'string',
+      enum: ['Banco Galicia', 'Mercado Pago', 'Naranja X', 'Efectivo'],
       description:
-        'The bank entity, digital wallet, or payment method (e.g., Santander, Mercado Pago, Efectivo, Lemon). Default to "Efectivo" if not specified.',
+        'The bank entity, digital wallet, or payment method. MUST be exactly one of: Banco Galicia, Mercado Pago, Naranja X, Efectivo. Default to "Efectivo" if not specified.',
     },
     category: {
       type: 'string',
@@ -113,7 +114,7 @@ Analyze the provided voice audio recording and extract exactly one transaction i
 Rules:
 1. "type" MUST be one of: "income", "expense", or "investment".
 2. "amount" MUST be a positive number representing the amount spent, received, or invested.
-3. "bankEntity" MUST be the bank, digital wallet, or payment method mentioned (e.g., "Mercado Pago", "Santander", "Efectivo", "Lemon"). If none is mentioned, default to "Efectivo".
+3. "bankEntity" MUST be exactly one of the four allowed accounts: "Banco Galicia", "Mercado Pago", "Naranja X", or "Efectivo". If another entity is mentioned or none is mentioned, default to "Efectivo".
 4. "category" MUST be a clear category (e.g., "Supermercado", "Restaurante", "Sueldo", "Servicios", "Inversiones", "Café").
 5. "date" MUST be formatted as "YYYY-MM-DD". If the user did not specify a date or relative day (like "yesterday"), default to "${currentDate}".
 6. "description" should capture any additional details or notes mentioned, or null.

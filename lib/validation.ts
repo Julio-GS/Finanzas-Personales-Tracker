@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isValidIsoDate, formatIsoDate } from './dates';
+import { accountOptionSchema } from './accounts';
 
 export const MOVEMENT_TYPES = ['income', 'expense', 'investment'] as const;
 export const movementTypeSchema = z.enum(MOVEMENT_TYPES);
@@ -36,7 +37,7 @@ const amountSchema = z
 export const manualTransactionInputSchema = z.object({
   type: movementTypeSchema,
   amount: amountSchema,
-  bankEntity: z.string().trim().min(1, 'Bank entity is required and must not be empty'),
+  bankEntity: accountOptionSchema,
   category: z.string().trim().min(1, 'Category is required and must not be empty'),
   date: z.string().refine(isValidIsoDate, {
     message: 'Date must be a valid YYYY-MM-DD string',
@@ -64,6 +65,7 @@ export const geminiExtractedTransactionSchema = z.object({
     .trim()
     .nullish()
     .transform((val) => (val && val.trim().length > 0 ? val.trim() : 'Efectivo'))
+    .pipe(accountOptionSchema)
     .default('Efectivo'),
   category: z.string().trim().min(1, 'Category is required and must not be empty'),
   date: z

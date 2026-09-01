@@ -97,7 +97,7 @@ describe('Database Queries (db/queries.ts)', () => {
   });
 
   describe('getMonthDashboard', () => {
-    it('returns formatted KPIs, sorted breakdowns, and transaction list for a month with transactions', async () => {
+    it('returns formatted KPIs, per-account breakdown with income/expenses/net, sorted breakdowns, and cumulative investments', async () => {
       const mockTxs = [
         {
           id: '1',
@@ -105,7 +105,7 @@ describe('Database Queries (db/queries.ts)', () => {
           date: '2026-08-15',
           type: 'income' as const,
           amount: '100000.00',
-          bankEntity: 'Santander',
+          bankEntity: 'Banco Galicia',
           category: 'Sueldo',
           description: 'Monthly salary',
           rawAudioPrompt: null,
@@ -127,7 +127,7 @@ describe('Database Queries (db/queries.ts)', () => {
           date: '2026-08-17',
           type: 'investment' as const,
           amount: '20000.00',
-          bankEntity: 'Santander',
+          bankEntity: 'Banco Galicia',
           category: 'CEDEARs',
           description: 'AAPL purchase',
           rawAudioPrompt: null,
@@ -135,12 +135,22 @@ describe('Database Queries (db/queries.ts)', () => {
       ];
 
       const mockDb = {
-        select: vi.fn().mockReturnValue({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              orderBy: vi.fn().mockResolvedValue(mockTxs),
+        select: vi.fn().mockImplementation((selection) => {
+          // Check if selecting cumulative investments (has totalInvestments in select clause)
+          if (selection && selection.totalInvestments) {
+            return {
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockResolvedValue([{ totalInvestments: '75000.00' }]),
+              }),
+            };
+          }
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue(mockTxs),
+              }),
             }),
-          }),
+          };
         }),
       };
 
@@ -154,18 +164,36 @@ describe('Database Queries (db/queries.ts)', () => {
       });
 
       // KPIs: income=100000, expenses=30000, investments=20000 -> netFlow = 100000 - 30000 - 20000 = 50000
-      expect(result.kpis).toEqual({
-        income: '100000.00',
-        expenses: '30000.00',
-        investments: '20000.00',
-        netFlow: '50000.00',
-      });
+      expect(result.kpis.income).toBe('100000.00');
+      expect(result.kpis.expenses).toBe('30000.00');
+      expect(result.kpis.investments).toBe('20000.00');
+      expect(result.kpis.netFlow).toBe('50000.00');
+      expect(result.kpis.cumulativeInvestments).toBe('75000.00');
 
-      // Breakdowns by entity: Santander (100000+20000=120000), Mercado Pago (30000)
-      expect(result.breakdowns.byEntity).toEqual([
-        { label: 'Santander', total: '120000.00' },
-        { label: 'Mercado Pago', total: '30000.00' },
-      ]);
+      // Breakdowns by entity: Banco Galicia (inc: 100000, exp: 0, net: 100000), Mercado Pago (inc: 0, exp: 30000, net: -30000), Naranja X (0), Efectivo (0)
+      const galicia = result.breakdowns.byEntity.find((b: any) => b.account === 'Banco Galicia' || b.label === 'Banco Galicia');
+      expect(galicia).toBeDefined();
+      expect(galicia?.income).toBe('100000.00');
+      expect(galicia?.expenses).toBe('0.00');
+      expect(galicia?.net).toBe('100000.00');
+
+      const mp = result.breakdowns.byEntity.find((b: any) => b.account === 'Mercado Pago' || b.label === 'Mercado Pago');
+      expect(mp).toBeDefined();
+      expect(mp?.income).toBe('0.00');
+      expect(mp?.expenses).toBe('30000.00');
+      expect(mp?.net).toBe('-30000.00');
+
+      const naranja = result.breakdowns.byEntity.find((b: any) => b.account === 'Naranja X' || b.label === 'Naranja X');
+      expect(naranja).toBeDefined();
+      expect(naranja?.income).toBe('0.00');
+      expect(naranja?.expenses).toBe('0.00');
+      expect(naranja?.net).toBe('0.00');
+
+      const efectivo = result.breakdowns.byEntity.find((b: any) => b.account === 'Efectivo' || b.label === 'Efectivo');
+      expect(efectivo).toBeDefined();
+      expect(efectivo?.income).toBe('0.00');
+      expect(efectivo?.expenses).toBe('0.00');
+      expect(efectivo?.net).toBe('0.00');
 
       // Breakdowns by category: Sueldo (100000), Supermercado (30000), CEDEARs (20000)
       expect(result.breakdowns.byCategory).toEqual([
@@ -177,14 +205,64 @@ describe('Database Queries (db/queries.ts)', () => {
       expect(result.transactions).toEqual(mockTxs);
     });
 
-    it('returns zero KPIs and empty breakdowns/transactions for an empty month', async () => {
+    it('handles legacy historical bankEntity without breaking and includes it in account breakdown', async () => {
+      const mockTxs = [
+        {
+          id: '1',
+          createdAt: new Date('2026-08-15T10:00:00Z'),
+          date: '2026-08-15',
+          type: 'expense' as const,
+          amount: '15000.00',
+          bankEntity: 'Santander',
+          category: 'Servicios',
+          description: 'Historical bank entry',
+          rawAudioPrompt: null,
+        },
+      ];
+
       const mockDb = {
-        select: vi.fn().mockReturnValue({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              orderBy: vi.fn().mockResolvedValue([]),
+        select: vi.fn().mockImplementation((selection) => {
+          if (selection && selection.totalInvestments) {
+            return {
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockResolvedValue([{ totalInvestments: '0' }]),
+              }),
+            };
+          }
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue(mockTxs),
+              }),
             }),
-          }),
+          };
+        }),
+      };
+
+      const result = await getMonthDashboard(2026, 8, mockDb as any);
+      const santander = result.breakdowns.byEntity.find((b: any) => b.account === 'Santander' || b.label === 'Santander');
+      expect(santander).toBeDefined();
+      expect(santander?.expenses).toBe('15000.00');
+      expect(santander?.net).toBe('-15000.00');
+    });
+
+    it('returns zero KPIs and 4 fixed zero accounts in breakdowns for an empty month', async () => {
+      const mockDb = {
+        select: vi.fn().mockImplementation((selection) => {
+          if (selection && selection.totalInvestments) {
+            return {
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockResolvedValue([{ totalInvestments: '0' }]),
+              }),
+            };
+          }
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue([]),
+              }),
+            }),
+          };
         }),
       };
 
@@ -202,14 +280,21 @@ describe('Database Queries (db/queries.ts)', () => {
         expenses: '0.00',
         investments: '0.00',
         netFlow: '0.00',
+        cumulativeInvestments: '0.00',
       });
 
-      expect(result.breakdowns.byEntity).toEqual([]);
+      expect(result.breakdowns.byEntity.length).toBe(4);
+      expect(result.breakdowns.byEntity.map((b: any) => b.account)).toEqual([
+        'Banco Galicia',
+        'Mercado Pago',
+        'Naranja X',
+        'Efectivo',
+      ]);
       expect(result.breakdowns.byCategory).toEqual([]);
       expect(result.transactions).toEqual([]);
     });
 
-    it('sorts breakdowns with equal amounts alphabetically by label', async () => {
+    it('sorts category breakdowns with equal amounts alphabetically by label', async () => {
       const mockTxs = [
         {
           id: '1',
@@ -217,7 +302,7 @@ describe('Database Queries (db/queries.ts)', () => {
           date: '2026-08-15',
           type: 'expense' as const,
           amount: '500.00',
-          bankEntity: 'Santander',
+          bankEntity: 'Banco Galicia',
           category: 'Zapatos',
           description: null,
           rawAudioPrompt: null,
@@ -228,7 +313,7 @@ describe('Database Queries (db/queries.ts)', () => {
           date: '2026-08-16',
           type: 'expense' as const,
           amount: '500.00',
-          bankEntity: 'BBVA',
+          bankEntity: 'Mercado Pago',
           category: 'Alimentos',
           description: null,
           rawAudioPrompt: null,
@@ -236,22 +321,25 @@ describe('Database Queries (db/queries.ts)', () => {
       ];
 
       const mockDb = {
-        select: vi.fn().mockReturnValue({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              orderBy: vi.fn().mockResolvedValue(mockTxs),
+        select: vi.fn().mockImplementation((selection) => {
+          if (selection && selection.totalInvestments) {
+            return {
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockResolvedValue([{ totalInvestments: '0' }]),
+              }),
+            };
+          }
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue(mockTxs),
+              }),
             }),
-          }),
+          };
         }),
       };
 
       const result = await getMonthDashboard(2026, 8, mockDb as any);
-
-      // BBVA before Santander (same amount, alphabetical label)
-      expect(result.breakdowns.byEntity).toEqual([
-        { label: 'BBVA', total: '500.00' },
-        { label: 'Santander', total: '500.00' },
-      ]);
 
       // Alimentos before Zapatos (same amount, alphabetical label)
       expect(result.breakdowns.byCategory).toEqual([
@@ -287,12 +375,21 @@ describe('Database Queries (db/queries.ts)', () => {
       ];
 
       const mockDb = {
-        select: vi.fn().mockReturnValue({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              orderBy: vi.fn().mockResolvedValue(mockTxs),
+        select: vi.fn().mockImplementation((selection) => {
+          if (selection && selection.totalInvestments) {
+            return {
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockResolvedValue([{ totalInvestments: '0' }]),
+              }),
+            };
+          }
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue(mockTxs),
+              }),
             }),
-          }),
+          };
         }),
       };
 
@@ -305,12 +402,21 @@ describe('Database Queries (db/queries.ts)', () => {
 
     it('passes exact month range [YYYY-12-01, YYYY+1-01-01) for December', async () => {
       const mockDb = {
-        select: vi.fn().mockReturnValue({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              orderBy: vi.fn().mockResolvedValue([]),
+        select: vi.fn().mockImplementation((selection) => {
+          if (selection && selection.totalInvestments) {
+            return {
+              from: vi.fn().mockReturnValue({
+                where: vi.fn().mockResolvedValue([{ totalInvestments: '0' }]),
+              }),
+            };
+          }
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue([]),
+              }),
             }),
-          }),
+          };
         }),
       };
 

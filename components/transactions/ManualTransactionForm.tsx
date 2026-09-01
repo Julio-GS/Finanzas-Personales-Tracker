@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatIsoDate } from '@/lib/dates';
+import { ALLOWED_ACCOUNTS } from '@/lib/accounts';
 import type { MovementType } from '@/lib/types';
 import { PenTool, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
@@ -101,7 +102,22 @@ export function ManualTransactionForm({ onSuccess, defaultType = 'expense' }: Ma
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="tx-bank-entity">Entidad / Cuenta</Label>
-              <Input id="tx-bank-entity" name="bankEntity" type="text" required placeholder="Ej. Santander, Mercado Pago, Efectivo" value={bankEntity} onChange={(e) => setBankEntity(e.target.value)} disabled={isLoading} />
+              <select
+                id="tx-bank-entity"
+                name="bankEntity"
+                required
+                value={bankEntity}
+                onChange={(e) => setBankEntity(e.target.value)}
+                disabled={isLoading}
+                className="flex h-11 w-full rounded-xl border border-input/60 bg-secondary/40 px-3.5 py-2 text-base text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+              >
+                <option value="">Seleccione una entidad / cuenta</option>
+                {ALLOWED_ACCOUNTS.map((acc) => (
+                  <option key={acc} value={acc}>
+                    {acc}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="tx-category">Categoría</Label>

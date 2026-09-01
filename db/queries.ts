@@ -4,17 +4,20 @@ import { getDb, type Database } from './client';
 import { transactions, type Transaction } from './schema';
 import { getMonthRange } from '@/lib/dates';
 import { normalizeDecimalString, calculateNetFlow } from '@/lib/money';
+import {
+  ALLOWED_ACCOUNTS,
+  type BreakdownItem,
+  type AccountBreakdownItem,
+} from '@/lib/accounts';
 
-export interface BreakdownItem {
-  label: string;
-  total: string;
-}
+export type { BreakdownItem, AccountBreakdownItem };
 
 export interface MonthlyKpis {
   income: string;
   expenses: string;
   investments: string;
   netFlow: string;
+  cumulativeInvestments?: string;
 }
 
 export interface MonthDashboardData {
@@ -26,7 +29,7 @@ export interface MonthDashboardData {
   };
   kpis: MonthlyKpis;
   breakdowns: {
-    byEntity: BreakdownItem[];
+    byEntity: AccountBreakdownItem[];
     byCategory: BreakdownItem[];
   };
   transactions: Transaction[];
@@ -110,7 +113,16 @@ export async function getMonthDashboard(
   let expenses = 0;
   let investments = 0;
 
-  const entityMap = new Map<string, number>();
+  const accountMap = new Map<
+    string,
+    { income: number; expenses: number; investments: number }
+  >();
+
+  // Always initialize the 4 fixed accounts
+  for (const account of ALLOWED_ACCOUNTS) {
+    accountMap.set(account, { income: 0, expenses: 0, investments: 0 });
+  }
+
   const categoryMap = new Map<string, number>();
 
   for (const tx of txList) {
@@ -123,17 +135,49 @@ export async function getMonthDashboard(
       investments += amt;
     }
 
-    entityMap.set(tx.bankEntity, (entityMap.get(tx.bankEntity) || 0) + amt);
+    let stats = accountMap.get(tx.bankEntity);
+    if (!stats) {
+      stats = { income: 0, expenses: 0, investments: 0 };
+      accountMap.set(tx.bankEntity, stats);
+    }
+
+    if (tx.type === 'income') {
+      stats.income += amt;
+    } else if (tx.type === 'expense') {
+      stats.expenses += amt;
+    } else if (tx.type === 'investment') {
+      stats.investments += amt;
+    }
+
     categoryMap.set(tx.category, (categoryMap.get(tx.category) || 0) + amt);
   }
 
-  const byEntity: BreakdownItem[] = Array.from(entityMap.entries())
-    .map(([label, total]) => ({ label, total: total.toFixed(2) }))
-    .sort(
-      (a, b) =>
-        Number.parseFloat(b.total) - Number.parseFloat(a.total) ||
-        a.label.localeCompare(b.label)
-    );
+  const fixedOrder = new Map<string, number>(
+    ALLOWED_ACCOUNTS.map((acc, idx) => [acc, idx])
+  );
+
+  const byEntity: AccountBreakdownItem[] = Array.from(accountMap.entries())
+    .map(([account, stats]) => {
+      const net = stats.income - stats.expenses;
+      const totalActivity = stats.income + stats.expenses + stats.investments;
+      return {
+        account,
+        label: account,
+        income: stats.income.toFixed(2),
+        expenses: stats.expenses.toFixed(2),
+        investments: stats.investments.toFixed(2),
+        net: net.toFixed(2),
+        total: totalActivity.toFixed(2),
+      };
+    })
+    .sort((a, b) => {
+      const idxA = fixedOrder.get(a.account);
+      const idxB = fixedOrder.get(b.account);
+      if (idxA !== undefined && idxB !== undefined) return idxA - idxB;
+      if (idxA !== undefined) return -1;
+      if (idxB !== undefined) return 1;
+      return a.account.localeCompare(b.account);
+    });
 
   const byCategory: BreakdownItem[] = Array.from(categoryMap.entries())
     .map(([label, total]) => ({ label, total: total.toFixed(2) }))
@@ -142,6 +186,18 @@ export async function getMonthDashboard(
         Number.parseFloat(b.total) - Number.parseFloat(a.total) ||
         a.label.localeCompare(b.label)
     );
+
+  // Cumulative investments across all history
+  const [invRow] = await client
+    .select({
+      totalInvestments: sql<string>`coalesce(sum(${transactions.amount}), 0)::text`,
+    })
+    .from(transactions)
+    .where(eq(transactions.type, 'investment'));
+
+  const cumulativeInvestments = normalizeDecimalString(
+    invRow?.totalInvestments ?? '0'
+  );
 
   const incomeStr = income.toFixed(2);
   const expensesStr = expenses.toFixed(2);
@@ -164,6 +220,7 @@ export async function getMonthDashboard(
       expenses: expensesStr,
       investments: investmentsStr,
       netFlow: netFlowStr,
+      cumulativeInvestments,
     },
     breakdowns: {
       byEntity,

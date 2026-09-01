@@ -192,6 +192,31 @@ describe('Transactions API Routes', () => {
       expect(insertSpy).not.toHaveBeenCalled();
     });
 
+    it('rejects bankEntity outside the 4 allowed accounts with 422', async () => {
+      const insertSpy = vi.spyOn(queries, 'insertTransaction');
+
+      const req = new NextRequest('http://localhost:3000/api/transactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: `${AUTH_COOKIE_NAME}=${validCookie}`,
+        },
+        body: JSON.stringify({
+          type: 'expense',
+          amount: 500,
+          bankEntity: 'Santander Rio',
+          category: 'Comida',
+          date: '2026-08-26',
+        }),
+      });
+
+      const res = await postTransaction(req);
+      expect(res.status).toBe(422);
+      const body = await res.json();
+      expect(body.error.code).toBe('validation_error');
+      expect(insertSpy).not.toHaveBeenCalled();
+    });
+
     it('creates a transaction and returns 201 with transaction object', async () => {
       const mockCreated = {
         id: '11111111-1111-1111-1111-111111111111',

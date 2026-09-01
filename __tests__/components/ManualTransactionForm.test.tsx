@@ -7,11 +7,21 @@ import { ManualTransactionForm } from '@/components/transactions/ManualTransacti
 describe('ManualTransactionForm', () => {
   beforeEach(() => { vi.restoreAllMocks(); });
 
-  it('renders all form fields with accessible labels and defaults', () => {
+  it('renders all form fields with accessible labels and defaults, with a select for the 4 fixed accounts', () => {
     render(<ManualTransactionForm />);
     expect(screen.getByLabelText(/tipo/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/monto/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/entidad \/ cuenta/i)).toBeInTheDocument();
+
+    const accountSelect = screen.getByLabelText(/entidad \/ cuenta/i);
+    expect(accountSelect).toBeInTheDocument();
+    expect(accountSelect.tagName.toLowerCase()).toBe('select');
+
+    const options = Array.from(accountSelect.querySelectorAll('option')).map((opt) => (opt as HTMLOptionElement).value);
+    expect(options).toContain('Banco Galicia');
+    expect(options).toContain('Mercado Pago');
+    expect(options).toContain('Naranja X');
+    expect(options).toContain('Efectivo');
+
     expect(screen.getByLabelText(/^categor[ií]a$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/fecha/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/descripci[oó]n/i)).toBeInTheDocument();
@@ -21,14 +31,14 @@ describe('ManualTransactionForm', () => {
   it('submits valid form data and resets upon success', async () => {
     const user = userEvent.setup(), onSuccess = vi.fn();
     const fetchMock = vi.fn().mockResolvedValue({
-      ok: true, status: 201, json: async () => ({ transaction: { id: '123', type: 'expense', amount: '1500.50', bankEntity: 'Santander', category: 'Supermercado', date: '2026-08-26', description: 'Compras' } }),
+      ok: true, status: 201, json: async () => ({ transaction: { id: '123', type: 'expense', amount: '1500.50', bankEntity: 'Mercado Pago', category: 'Supermercado', date: '2026-08-26', description: 'Compras' } }),
     });
     global.fetch = fetchMock;
     render(<ManualTransactionForm onSuccess={onSuccess} />);
     await user.selectOptions(screen.getByLabelText(/tipo/i), 'expense');
     await user.clear(screen.getByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), '1500.50');
-    await user.type(screen.getByLabelText(/entidad \/ cuenta/i), 'Santander');
+    await user.selectOptions(screen.getByLabelText(/entidad \/ cuenta/i), 'Mercado Pago');
     await user.type(screen.getByLabelText(/^categor[ií]a$/i), 'Supermercado');
     await user.type(screen.getByLabelText(/descripci[oó]n/i), 'Compras');
     await user.click(screen.getByRole('button', { name: /guardar|registrar/i }));
@@ -39,7 +49,7 @@ describe('ManualTransactionForm', () => {
       }));
     });
     const parsed = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(parsed.amount).toBe(1500.5); expect(parsed.bankEntity).toBe('Santander'); expect(parsed.category).toBe('Supermercado');
+    expect(parsed.amount).toBe(1500.5); expect(parsed.bankEntity).toBe('Mercado Pago'); expect(parsed.category).toBe('Supermercado');
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
     expect(screen.getByLabelText(/monto/i)).toHaveValue(null);
     expect(screen.getByLabelText(/entidad \/ cuenta/i)).toHaveValue('');
@@ -49,7 +59,7 @@ describe('ManualTransactionForm', () => {
     const user = userEvent.setup(), fetchMock = vi.fn(); global.fetch = fetchMock;
     render(<ManualTransactionForm />);
     await user.type(screen.getByLabelText(/monto/i), '-50');
-    await user.type(screen.getByLabelText(/entidad \/ cuenta/i), 'Santander');
+    await user.selectOptions(screen.getByLabelText(/entidad \/ cuenta/i), 'Banco Galicia');
     await user.type(screen.getByLabelText(/^categor[ií]a$/i), 'Super');
     await user.click(screen.getByRole('button', { name: /guardar|registrar/i }));
     expect(screen.getByRole('alert')).toHaveTextContent(/monto válido mayor a 0/i);
@@ -71,7 +81,7 @@ describe('ManualTransactionForm', () => {
     global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
     render(<ManualTransactionForm />);
     await user.type(screen.getByLabelText(/monto/i), '100');
-    await user.type(screen.getByLabelText(/entidad \/ cuenta/i), 'Efectivo');
+    await user.selectOptions(screen.getByLabelText(/entidad \/ cuenta/i), 'Efectivo');
     await user.type(screen.getByLabelText(/^categor[ií]a$/i), 'Comida');
     await user.click(screen.getByRole('button', { name: /guardar|registrar/i }));
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/error de conexión/i));
@@ -82,7 +92,7 @@ describe('ManualTransactionForm', () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 422, json: async () => ({ error: { code: 'validation_error', message: 'Datos de transacción inválidos' } }) });
     render(<ManualTransactionForm onSuccess={onSuccess} />);
     await user.type(screen.getByLabelText(/monto/i), '500');
-    await user.type(screen.getByLabelText(/entidad \/ cuenta/i), 'Mercado Pago');
+    await user.selectOptions(screen.getByLabelText(/entidad \/ cuenta/i), 'Mercado Pago');
     await user.type(screen.getByLabelText(/^categor[ií]a$/i), 'Servicios');
     await user.click(screen.getByRole('button', { name: /guardar|registrar/i }));
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/inválidos/i));
@@ -96,7 +106,7 @@ describe('ManualTransactionForm', () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({ error: { code: 'unauthorized', message: 'Unauthorized' } }) });
     render(<ManualTransactionForm />);
     await user.type(screen.getByLabelText(/monto/i), '100');
-    await user.type(screen.getByLabelText(/entidad \/ cuenta/i), 'Efectivo');
+    await user.selectOptions(screen.getByLabelText(/entidad \/ cuenta/i), 'Efectivo');
     await user.type(screen.getByLabelText(/^categor[ií]a$/i), 'Salidas');
     await user.click(screen.getByRole('button', { name: /guardar|registrar/i }));
     await waitFor(() => expect(window.location.href).toBe('/login'));
@@ -108,7 +118,7 @@ describe('ManualTransactionForm', () => {
     global.fetch = vi.fn().mockReturnValue(new Promise((resolve) => { resolveFetch = resolve; }));
     render(<ManualTransactionForm />);
     await user.type(screen.getByLabelText(/monto/i), '250');
-    await user.type(screen.getByLabelText(/entidad \/ cuenta/i), 'Lemon');
+    await user.selectOptions(screen.getByLabelText(/entidad \/ cuenta/i), 'Naranja X');
     await user.type(screen.getByLabelText(/^categor[ií]a$/i), 'Inversiones');
     await user.click(screen.getByRole('button', { name: /guardar|registrar/i }));
     expect(screen.getByRole('button', { name: /guardando|registrando/i })).toBeDisabled();

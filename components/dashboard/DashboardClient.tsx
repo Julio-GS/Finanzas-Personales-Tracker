@@ -99,7 +99,7 @@ export function DashboardClient({ initialYear, initialMonth }: DashboardClientPr
           <Button variant="outline" size="sm" onClick={() => loadData(currentYear, currentMonth)} className="gap-1 border-destructive/30 hover:bg-destructive/20"><RefreshCw className="h-3 w-3" /> Reintentar</Button>
         </div>
       )}
-      <section aria-label="Indicadores del mes"><KpiCards kpis={data?.kpis ?? EMPTY_KPIS} loading={isLoading} /></section>
+      <section aria-label="Indicadores del mes"><KpiCards kpis={data?.kpis ?? EMPTY_KPIS} byEntity={data?.breakdowns.byEntity ?? []} loading={isLoading} /></section>
       <section aria-label="Registro de transacciones" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <VoiceRecorder onSuccess={() => loadData(currentYear, currentMonth)} />
         <ManualTransactionForm onSuccess={() => loadData(currentYear, currentMonth)} />

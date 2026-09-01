@@ -27,24 +27,262 @@ describe('Dashboard UI Components', () => {
   });
 
   describe('KpiCards', () => {
-    it('renders formatted KPIs, positive flow, zero states, and negative deficit', () => {
-      const { rerender } = render(<KpiCards kpis={{ income: '250000.00', expenses: '80000.00', investments: '50000.00', netFlow: '120000.00' }} />);
+    it('renders formatted KPIs, positive flow, zero states, negative deficit, and cumulative investments', () => {
+      const { rerender } = render(
+        <KpiCards
+          kpis={{
+            income: '250000.00',
+            expenses: '80000.00',
+            investments: '50000.00',
+            netFlow: '120000.00',
+            cumulativeInvestments: '175000.00',
+          }}
+        />
+      );
       expect(screen.getByText(/^ingresos$/i)).toBeInTheDocument();
       expect(screen.getByText(/positivo/i)).toBeInTheDocument();
       expect(screen.getByText(/\$ 250\.000,00|\$250,000\.00/i)).toBeInTheDocument();
-      rerender(<KpiCards kpis={{ income: '0.00', expenses: '0.00', investments: '0.00', netFlow: '0.00' }} />);
-      expect(screen.getAllByText(/\$ 0,00|\$0\.00/i).length).toBe(4);
-      rerender(<KpiCards kpis={{ income: '50000.00', expenses: '80000.00', investments: '0.00', netFlow: '-30000.00' }} />);
+      expect(screen.getByText(/inversi[oó]n acumulada/i)).toBeInTheDocument();
+      expect(screen.getByText(/\$ 175\.000,00|\$175,000\.00/i)).toBeInTheDocument();
+
+      rerender(
+        <KpiCards
+          kpis={{
+            income: '0.00',
+            expenses: '0.00',
+            investments: '0.00',
+            netFlow: '0.00',
+            cumulativeInvestments: '0.00',
+          }}
+        />
+      );
+      expect(screen.getAllByText(/\$ 0,00|\$0\.00/i).length).toBe(5);
+
+      rerender(
+        <KpiCards
+          kpis={{
+            income: '50000.00',
+            expenses: '80000.00',
+            investments: '0.00',
+            netFlow: '-30000.00',
+          }}
+        />
+      );
       expect(screen.getByText(/déficit/i)).toBeInTheDocument();
+    });
+
+    it('shows only strictly positive accounts with formatted values under Flujo Neto and hides zero/negative accounts', () => {
+      const byEntity = [
+        {
+          account: 'Banco Galicia',
+          label: 'Banco Galicia',
+          income: '100000.00',
+          expenses: '30000.00',
+          investments: '0.00',
+          net: '70000.00',
+          total: '130000.00',
+        },
+        {
+          account: 'Naranja X',
+          label: 'Naranja X',
+          income: '15000.00',
+          expenses: '10000.00',
+          investments: '0.00',
+          net: '5000.00',
+          total: '25000.00',
+        },
+        {
+          account: 'Mercado Pago',
+          label: 'Mercado Pago',
+          income: '20000.00',
+          expenses: '25000.00',
+          investments: '0.00',
+          net: '-5000.00',
+          total: '45000.00',
+        },
+        {
+          account: 'Efectivo',
+          label: 'Efectivo',
+          income: '0.00',
+          expenses: '0.00',
+          investments: '0.00',
+          net: '0.00',
+          total: '0.00',
+        },
+      ];
+
+      render(
+        <KpiCards
+          kpis={{
+            income: '135000.00',
+            expenses: '60000.00',
+            investments: '0.00',
+            netFlow: '75000.00',
+          }}
+          byEntity={byEntity}
+        />
+      );
+
+      // Global net remains visible
+      expect(screen.getByText(/\$ 75\.000,00|\$75,000\.00/i)).toBeInTheDocument();
+
+      // Strictly positive accounts appear
+      expect(screen.getByText('Banco Galicia')).toBeInTheDocument();
+      expect(screen.getByText(/\$ 70\.000,00|\$70,000\.00/i)).toBeInTheDocument();
+      expect(screen.getByText('Naranja X')).toBeInTheDocument();
+      expect(screen.getByText(/\$ 5\.000,00|\$5,000\.00/i)).toBeInTheDocument();
+
+      // Negative and zero accounts are hidden
+      expect(screen.queryByText('Mercado Pago')).not.toBeInTheDocument();
+      expect(screen.queryByText('Efectivo')).not.toBeInTheDocument();
+    });
+
+    it('renders honest empty state under Flujo Neto when no accounts have positive net', () => {
+      const byEntity = [
+        {
+          account: 'Mercado Pago',
+          label: 'Mercado Pago',
+          income: '20000.00',
+          expenses: '25000.00',
+          investments: '0.00',
+          net: '-5000.00',
+          total: '45000.00',
+        },
+        {
+          account: 'Efectivo',
+          label: 'Efectivo',
+          income: '0.00',
+          expenses: '0.00',
+          investments: '0.00',
+          net: '0.00',
+          total: '0.00',
+        },
+      ];
+
+      const { rerender } = render(
+        <KpiCards
+          kpis={{
+            income: '20000.00',
+            expenses: '25000.00',
+            investments: '0.00',
+            netFlow: '-5000.00',
+          }}
+          byEntity={byEntity}
+        />
+      );
+
+      expect(screen.getByText(/sin remanente en cuentas/i)).toBeInTheDocument();
+      expect(screen.queryByText('Mercado Pago')).not.toBeInTheDocument();
+      expect(screen.queryByText('Efectivo')).not.toBeInTheDocument();
+
+      rerender(
+        <KpiCards
+          kpis={{
+            income: '0.00',
+            expenses: '0.00',
+            investments: '0.00',
+            netFlow: '0.00',
+          }}
+          byEntity={[]}
+        />
+      );
+      expect(screen.getByText(/sin remanente en cuentas/i)).toBeInTheDocument();
+    });
+
+    it('shows positive account row even when overall monthly net is in deficit, and handles loading state', () => {
+      const byEntity = [
+        {
+          account: 'Banco Galicia',
+          label: 'Banco Galicia',
+          income: '50000.00',
+          expenses: '30000.00',
+          investments: '0.00',
+          net: '20000.00',
+          total: '80000.00',
+        },
+        {
+          account: 'Mercado Pago',
+          label: 'Mercado Pago',
+          income: '10000.00',
+          expenses: '40000.00',
+          investments: '0.00',
+          net: '-30000.00',
+          total: '50000.00',
+        },
+      ];
+
+      const { rerender } = render(
+        <KpiCards
+          kpis={{
+            income: '60000.00',
+            expenses: '70000.00',
+            investments: '0.00',
+            netFlow: '-10000.00',
+          }}
+          byEntity={byEntity}
+        />
+      );
+
+      // Global deficit is visible
+      expect(screen.getByText(/déficit/i)).toBeInTheDocument();
+      expect(screen.getByText(/-\$ 10\.000,00|-\$10,000\.00/i)).toBeInTheDocument();
+
+      // Only positive account appears
+      expect(screen.getByText('Banco Galicia')).toBeInTheDocument();
+      expect(screen.getByText(/\$ 20\.000,00|\$20,000\.00/i)).toBeInTheDocument();
+      expect(screen.queryByText('Mercado Pago')).not.toBeInTheDocument();
+
+      // Loading state
+      rerender(
+        <KpiCards
+          kpis={{
+            income: '60000.00',
+            expenses: '70000.00',
+            investments: '0.00',
+            netFlow: '-10000.00',
+          }}
+          byEntity={byEntity}
+          loading={true}
+        />
+      );
+      expect(screen.getByText('Cargando...')).toBeInTheDocument();
     });
   });
 
   describe('BreakdownList', () => {
-    it('renders entity/category lists with progress bars and empty states', () => {
-      const { rerender } = render(<BreakdownList byEntity={[{ label: 'Santander', total: '150000.00' }]} byCategory={[{ label: 'Sueldo', total: '150000.00' }]} />);
-      expect(screen.getByText('Santander')).toBeInTheDocument();
-      expect(screen.getByText('Sueldo')).toBeInTheDocument();
-      expect(screen.getAllByRole('progressbar').length).toBe(2);
+    it('renders account breakdown showing monthly income, expenses, and net per account', () => {
+      const accounts = [
+        {
+          account: 'Banco Galicia',
+          label: 'Banco Galicia',
+          income: '100000.00',
+          expenses: '30000.00',
+          investments: '0.00',
+          net: '70000.00',
+          total: '130000.00',
+        },
+        {
+          account: 'Mercado Pago',
+          label: 'Mercado Pago',
+          income: '20000.00',
+          expenses: '25000.00',
+          investments: '0.00',
+          net: '-5000.00',
+          total: '45000.00',
+        },
+      ];
+      const categories = [{ label: 'Supermercado', total: '25000.00' }];
+
+      const { rerender } = render(
+        <BreakdownList byEntity={accounts} byCategory={categories} />
+      );
+      expect(screen.getByText('Banco Galicia')).toBeInTheDocument();
+      expect(screen.getByText('Mercado Pago')).toBeInTheDocument();
+      expect(screen.getByText('Supermercado')).toBeInTheDocument();
+      expect(screen.getAllByText(/ingresos:/i).length).toBe(2);
+      expect(screen.getAllByText(/gastos:/i).length).toBe(2);
+      expect(screen.getAllByText(/neto:/i).length).toBe(2);
+
       rerender(<BreakdownList byEntity={[]} byCategory={[]} />);
       expect(screen.getAllByText(/sin movimientos en este período/i).length).toBe(2);
     });
@@ -165,7 +403,7 @@ describe('Dashboard UI Components', () => {
     });
 
     it('renders transaction creation forms and refetches dashboard on transaction save', async () => {
-      const user = userEvent.setup(), newTx = { id: 'tx-new', createdAt: '2026-08-26', date: '2026-08-26', type: 'expense' as const, amount: '500.00', bankEntity: 'MP', category: 'Cena', description: null, rawAudioPrompt: null };
+      const user = userEvent.setup(), newTx = { id: 'tx-new', createdAt: '2026-08-26', date: '2026-08-26', type: 'expense' as const, amount: '500.00', bankEntity: 'Mercado Pago', category: 'Cena', description: null, rawAudioPrompt: null };
       const updatedMockData: MonthDashboardData = { ...mockData, transactions: [newTx, ...mockData.transactions] };
       const txResponses = [
         { ok: true, status: 200, json: async () => mockData },
@@ -183,7 +421,7 @@ describe('Dashboard UI Components', () => {
       await waitFor(() => { expect(screen.getByText('Sueldo')).toBeInTheDocument(); });
       expect(screen.getByRole('button', { name: /guardar transacción/i })).not.toBeDisabled();
       await user.type(screen.getByLabelText(/monto/i), '500.00');
-      await user.type(screen.getByLabelText(/entidad \/ cuenta/i), 'MP');
+      await user.selectOptions(screen.getByLabelText(/entidad \/ cuenta/i), 'Mercado Pago');
       await user.type(screen.getByLabelText(/^categor[ií]a$/i), 'Cena');
       await user.click(screen.getByRole('button', { name: /guardar transacción/i }));
       await waitFor(() => { expect(screen.getByText('Cena')).toBeInTheDocument(); });
